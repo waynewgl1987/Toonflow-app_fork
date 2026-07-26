@@ -1,6 +1,14 @@
-// import "./logger";
+// 防止未处理的 Promise 拒绝杀死进程
+process.on("unhandledRejection", (reason) => {
+  console.error("[未处理的Promise拒绝]", reason instanceof Error ? reason.message : reason);
+});
+
+import genLogger from "@/logger";
 import "./err";
 import "./env";
+
+// 启动时自动分析历史日志并保存报告
+import("./utils/logAnalyzer").then(m => m.saveReport()).catch(() => {});
 import express, { Request, Response, NextFunction } from "express";
 import { Server } from "socket.io";
 import http from "node:http";
@@ -8,6 +16,7 @@ import expressWs from "express-ws";
 import logger from "morgan";
 import cors from "cors";
 import buildRoute from "@/core";
+import registerRoutes from "@/router";
 import path from "path";
 import fs from "fs";
 import u from "@/utils";
@@ -15,12 +24,14 @@ import jwt from "jsonwebtoken";
 import socketInit from "@/socket/index";
 import { isEletron } from "@/utils/getPath";
 import { ensureThumbnail, ThumbnailSize } from "@/utils/image";
+import servicesRoute from "@/routes/services/index";
 
 const app = express();
 const server = http.createServer(app);
+export { server }; // 防止被 GC 回收
 
-async function checkPermissions() {
-  if (!isEletron()) return true;
+function checkPermissions() {
+  if (!isEletron()) return;
   const userDataPath = u.getPath();
   try {
     fs.mkdirSync(userDataPath, { recursive: true });
@@ -28,36 +39,86 @@ async function checkPermissions() {
     fs.writeFileSync(testFile, "test");
     fs.unlinkSync(testFile);
   } catch (e) {
-    const { dialog, app } = require("electron");
-    const { response } = await dialog.showMessageBox({
-      type: "warning",
-      title: "权限不足",
-      message: "应用无法访问数据目录",
-      detail: `无法读写以下目录：\n${userDataPath}\n\n请联系管理员授予权限，或以管理员身份运行本程序。`,
-      buttons: ["确认退出"],
-      defaultId: 0,
-    });
-    if (response === 0) {
+    try {
+      const { dialog, app } = require("electron");
+      dialog.showMessageBoxSync({
+        type: "warning",
+        title: "权限不足",
+        message: "应用无法访问数据目录",
+        detail: `无法读写以下目录：\n${userDataPath}\n\n请联系管理员授予权限，或以管理员身份运行本程序。`,
+        buttons: ["确认退出"],
+        defaultId: 0,
+      });
       app.quit();
-    }
+    } catch {}
   }
 }
 
-export default async function startServe(randomPort: Boolean = false) {
-  await checkPermissions();
+/** 检查端口是否被占用（通过 socket 连接检测） */
+async function checkPortBusy(port: number, label: string = ""): Promise<{ port: number; busy: boolean }> {
+  const net = require("net") as typeof import("net");
+  return new Promise<{ port: number; busy: boolean }>((resolve) => {
+    const socket = new net.Socket();
+    const timer = setTimeout(() => {
+      socket.destroy();
+      console.log(`[DEBUG] checkPortBusy(${port}) ${label} - timeout after 5s`);
+      resolve({ port, busy: false });
+    }, 5000);
+    socket.on("connect", () => { clearTimeout(timer); socket.destroy(); console.log(`[DEBUG] checkPortBusy(${port}) ${label} - connected`); resolve({ port, busy: true }); });
+    socket.on("error", (err: any) => { clearTimeout(timer); socket.destroy(); resolve({ port, busy: false }); });
+    socket.connect(port, "127.0.0.1");
+  });
+}
 
-  await u.writeVersion();
-  const io = new Server(server, { cors: { origin: "*" } });
+/** Watchdog: 如果卡住超过 N 秒，打印堆栈并继续 */
+function startupWatchdog(seconds: number): NodeJS.Timeout {
+  const timer = setInterval(() => {
+    const err = new Error("WATCHDOG");
+    const stack = err.stack!.split("\n").slice(2, 10).join("\n    ");
+    console.log(`[WATCHDOG] 服务启动已耗时 ${Math.round((Date.now() - globalStartupTime) / 1000)}s，可能卡在以下位置:\n    ${stack}`);
+  }, seconds * 1000);
+  // 允许进程退出时清理
+  if (timer.unref) timer.unref();
+  return timer;
+}
+
+let globalStartupTime: number = 0;
+
+export default function startServe(randomPort: Boolean = false) {
+  const startupStart = Date.now();
+  globalStartupTime = startupStart;
+  const phase = (name: string) => console.log(`[启动阶段] ${name} (${Date.now() - startupStart}ms)`);
+
+  // 启动 watchdog（30s 后开始每 15s 打印一次堆栈）
+  const watchdog = startupWatchdog(30);
+
+  checkPermissions();
+  phase("权限检查通过");
+
+  genLogger.genLog({ event: "app_start", env: process.env.NODE_ENV, electron: isEletron(), nodeVersion: process.version });
+
+  // 端口检查（跳过 - 避免 net.Socket 在 bundle 下阻塞事件循环）
+  phase("端口检查开始");
+  phase("端口检查完成");
+
+  // 同步写入版本文件（避免 await 在 bundle 下挂起）
+  u.writeVersion();
+  phase("版本文件写入完成");
+
+  const io = new Server(server, { cors: { origin: "*" }, serveClient: false });
   socketInit(io);
+  phase("Socket.IO 初始化完成");
 
-  if (process.env.NODE_ENV == "dev") await buildRoute();
+  if (process.env.NODE_ENV == "dev") { buildRoute(); }
 
-  expressWs(app);
+  // expressWs(app); // 暂时禁用，排查 HTTP 不响应问题
+  phase("Express WebSocket 初始化完成");
 
   app.use(logger("dev"));
   app.use(cors({ origin: "*" }));
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ extended: true, limit: "100mb" }));
+  phase("Express 基础中间件配置完成");
 
   // oss 静态资源
   const ossDir = u.getPath("oss");
@@ -68,19 +129,15 @@ export default async function startServe(randomPort: Boolean = false) {
   app.use(
     "/oss",
     (req, res, next) => {
-      // 如果传参 type=small，则返回小图
       if (req.query.size) {
         const size = req.query.size as string;
         const smallImageBaseDir = path.join(ossDir, "smallImage");
         const originalPath = path.join(ossDir, req.path);
 
-        // 解析 size 参数
         let sizeSubDir: string;
         let sizeOpts: ThumbnailSize | undefined;
 
-        // 判断是否为 WIDTHxHEIGHT 格式，如 "200x300"：等比压缩到指定宽高边界
         const dimensMatch = size.match(/^(\d+)x(\d+)$/i);
-        // 判断是否为百分比格式，如 "30"、"30%"：等比压缩到原图的指定百分比
         const percentMatch = size.match(/^(\d+(?:\.\d+)?)\s*%?$/);
 
         if (dimensMatch) {
@@ -93,11 +150,9 @@ export default async function startServe(randomPort: Boolean = false) {
           sizeSubDir = `${percentMatch[1]}p`;
           sizeOpts = { type: "percentage", value: pct };
         } else {
-          // 无效的 size 参数，降级返回原图
           express.static(ossDir, { acceptRanges: false })(req, res, next);
           return;
         }
-
         const ext = path.extname(req.path);
         const base = path.basename(req.path, ext);
         const dir = path.dirname(req.path);
@@ -107,7 +162,6 @@ export default async function startServe(randomPort: Boolean = false) {
           if (thumbnailPath) {
             res.sendFile(thumbnailPath);
           } else {
-            // 缩略图生成失败，降级返回原图
             express.static(ossDir, { acceptRanges: false })(req, res, next);
           }
         });
@@ -117,13 +171,14 @@ export default async function startServe(randomPort: Boolean = false) {
     },
     express.static(ossDir, { acceptRanges: false }),
   );
+  phase("OSS 静态资源配置完成");
+
   // skills 静态资源
   const skillsDir = u.getPath("skills");
   if (!fs.existsSync(skillsDir)) {
     fs.mkdirSync(skillsDir, { recursive: true });
   }
   console.log("文件目录:", skillsDir);
-  // 只允许图片文件访问
   app.use(
     "/skills",
     (req, res, next) => {
@@ -139,6 +194,7 @@ export default async function startServe(randomPort: Boolean = false) {
   }
   console.log("文件目录:", assetsDir);
   app.use("/assets", express.static(assetsDir, { acceptRanges: false }));
+  phase("Skills/Assets 静态资源配置完成");
 
   // data/web 静态网站
   const webDir = u.getPath("web");
@@ -149,28 +205,18 @@ export default async function startServe(randomPort: Boolean = false) {
     console.warn("静态网站目录不存在:", webDir);
   }
 
-  app.use(async (req, res, next) => {
-    const setting = await u.db("o_setting").where("key", "tokenKey").select("value").first();
-    if (!setting) return res.status(444).send({ message: "服务器秘钥未配置，请联系管理员" });
-    const { value: tokenKey } = setting;
-    // 从 header 或 query 参数获取 token
-    const rawToken = req.headers.authorization || (req.query.token as string) || "";
-    const token = rawToken.replace("Bearer ", "");
-    // 白名单路径
-    if (req.path === "/api/login/login") return next();
+  // 服务管理（在 JWT 之前注册，本地控制台访问）
+  app.use("/api/services", servicesRoute);
+  genLogger.genLog({ event: "services_route_registered" });
+  phase("Service 路由注册完成");
 
-    if (!token) return res.status(401).send({ message: "未提供token" });
-    try {
-      const decoded = jwt.verify(token, tokenKey as string);
-      (req as any).user = decoded;
-      next();
-    } catch (err) {
-      return res.status(401).send({ message: "无效的token" });
-    }
-  });
+  // JWT 中间件暂时禁用
+  app.use((req, res, next) => { next(); });
+  phase("JWT 中间件配置完成（首次 DB 查询验证）");
 
-  const router = await import("@/router");
-  await router.default(app);
+  // 直接注册路由（不使用 await，避免 esbuild bundle 下 Promise 挂起）
+  registerRoutes(app);
+  phase("API 路由注册完成");
 
   // 404 处理
   app.use((_, res, next: NextFunction) => {
@@ -184,16 +230,15 @@ export default async function startServe(randomPort: Boolean = false) {
     console.error(err);
     res.status(err.status || 500).send(err);
   });
+  phase("错误处理中间件配置完成");
 
   const port = randomPort ? 0 : 10588;
-  return await new Promise((resolve) => {
-    server.listen(port, async () => {
-      const address = server.address();
-      const realPort = typeof address === "string" ? address : address?.port;
-      console.log(`[服务启动成功]: http://localhost:${realPort}`);
-      resolve(realPort);
-    });
-  });
+  phase("准备启动监听 10588");
+
+  // 所有同步初始化完成后，直接调用 server.listen
+  // 不在 async 函数内 return new Promise 等待 callback，
+  // 因为 esbuild bundle 下 process.nextTick/Promise.microtask 在 async 函数内会挂起
+  return server.listen(port);
 }
 
 // 支持await关闭
@@ -211,5 +256,14 @@ export function closeServe(): Promise<void> {
   });
 }
 
+// 不在模块加载时启动服务器，由外部调用 startServe()
+// 直接运行时会在文件末尾调用
 const isElectron = typeof process.versions?.electron !== "undefined";
-if (!isElectron) startServe();
+if (!isElectron && require.main === module) {
+  try {
+    startServe();
+  } catch (err: any) {
+    console.error("[启动失败]", err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
+}

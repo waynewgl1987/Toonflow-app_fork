@@ -35,7 +35,7 @@ const appBuildConfig: esbuild.BuildOptions = {
   allowOverwrite: true,
   outfile: `data/serve/app.js`,
   platform: "node",
-  target: "esnext",
+  target: "node20",
   tsconfig: "./tsconfig.json",
   alias: {
     "@": "./src",
@@ -56,7 +56,7 @@ const mainBuildConfig: esbuild.BuildOptions = {
   outfile: `build/main.js`,
   allowOverwrite: true,
   platform: "node",
-  target: "esnext",
+  target: "node20",
   tsconfig: "./tsconfig.json",
   alias: {
     "@": "./src",
