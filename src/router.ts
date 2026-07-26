@@ -173,6 +173,7 @@ import route168 from "./routes/task/getTaskApi";
 import route169 from "./routes/task/getTaskCategories";
 import route170 from "./routes/task/taskDetails";
 import route171 from "./routes/test/test";
+import route172 from "./routes/task/forceStopTask";
 
 export default async (app: Express) => {
   app.use("/api/agents/clearMemory", route1);
@@ -347,4 +348,5 @@ export default async (app: Express) => {
   app.use("/api/task/getTaskCategories", route169);
   app.use("/api/task/taskDetails", route170);
   app.use("/api/test/test", route171);
+  app.use("/api/task/forceStop", route172);
 }

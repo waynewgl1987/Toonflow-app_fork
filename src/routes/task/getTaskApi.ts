@@ -12,9 +12,10 @@ export default router.post(
     projectId: z.number().optional().nullable(),
     page: z.number(),
     limit: z.number(),
+    order: z.enum(["asc", "desc"]).optional().default("desc"),
   }),
   async (req, res) => {
-    const { taskClass, state, projectId, page = 1, limit = 10 }: any = req.body;
+    const { taskClass, state, projectId, page = 1, limit = 10, order = "desc" }: any = req.body;
     const offset = (page - 1) * limit;
     const data = await u
       .db("o_tasks")
@@ -33,7 +34,7 @@ export default router.post(
       .select("o_tasks.*", "o_project.* ")
       .offset(offset)
       .limit(limit)
-      .orderBy("o_tasks.id", "desc");
+      .orderBy("o_tasks.startTime", order);
     const totalQuery = (await u
       .db("o_tasks")
       .andWhere((qb) => {

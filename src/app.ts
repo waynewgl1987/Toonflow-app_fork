@@ -232,6 +232,19 @@ export default function startServe(randomPort: Boolean = false) {
   });
   phase("错误处理中间件配置完成");
 
+  // 启动时清理上次残留的「生成中」和「提取中」状态
+  try {
+    // 重置所有卡在「生成中」的图片记录
+    u.db("o_image").where("state", "生成中").update({ state: "生成失败", errorReason: "服务重启，任务已终止" }).then();
+    // 重置 o_assets 中卡在「提取中」的记录（数据库存的是中文）
+    u.db("o_assets").where("promptState", "提取中").update({ promptState: "失败" }).then();
+    // 重置 o_script 中卡在「提取中」(2) 的记录
+    u.db("o_script").where("extractState", 2).update({ extractState: -1, errorReason: "服务重启，任务已终止" }).then();
+    console.log("[启动] 已清理上次残留的任务状态");
+  } catch (e) {
+    console.warn("[启动] 清理残留状态失败（首次启动可忽略）:", (e as Error).message);
+  }
+
   const port = randomPort ? 0 : 10588;
   phase("准备启动监听 10588");
 
