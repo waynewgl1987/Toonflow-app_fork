@@ -157,13 +157,12 @@ router.post("/start-qwen3", async (_req: Request, res: Response) => {
         .send({ success: false, message: `Qwen3 启动脚本不存在: ${batPath}` });
     }
 
-    // 先检查 ComfyUI 是否在运行
+    // 自动停止冲突服务（ComfyUI），释放显存
     const comfyRunning = await checkPort(CONFIG.comfyui.port);
     if (comfyRunning) {
-      return res.status(400).send({
-        success: false,
-        message: `ComfyUI 正在运行 (端口 ${CONFIG.comfyui.port})。请先停止 ComfyUI 再启动 Qwen3（5080 16GB 无法同时运行两者）。`,
-      });
+      console.log(`[服务] ComfyUI 正在运行，自动停止以释放显存`);
+      try { spawn("taskkill", ["/f", "/im", "pythonw.exe"]); spawn("taskkill", ["/f", "/im", "python.exe"]); } catch {}
+      await new Promise(r => setTimeout(r, 2000));
     }
 
     const dir = path.dirname(batPath);
@@ -198,13 +197,12 @@ router.post("/start-comfyui", async (_req: Request, res: Response) => {
       return res.status(400).send({ success: false, message: `ComfyUI 主脚本不存在: ${scriptPath}` });
     }
 
-    // 先检查 Qwen3 是否在运行
+    // 自动停止冲突服务（Qwen3），释放显存
     const qwen3Running = await checkPort(CONFIG.qwen3.port);
     if (qwen3Running) {
-      return res.status(400).send({
-        success: false,
-        message: `Qwen3 正在运行 (端口 ${CONFIG.qwen3.port})。请先停止 Qwen3 再启动 ComfyUI（5080 16GB 无法同时运行两者）。`,
-      });
+      console.log(`[服务] Qwen3 正在运行，自动停止以释放显存`);
+      try { spawn("taskkill", ["/f", "/im", "llama-server.exe"]); } catch {}
+      await new Promise(r => setTimeout(r, 2000));
     }
 
     // 日志输出到项目 logs 目录
@@ -286,16 +284,20 @@ router.get("/workflows", async (_req: Request, res: Response) => {
 /** 停止所有服务 */
 router.post("/stop-all", async (_req: Request, res: Response) => {
   try {
-    // 杀掉 Qwen3 进程
+    // 杀掉 Qwen3 (llama-server.exe)
     try { spawn("taskkill", ["/f", "/im", "llama-server.exe"]); } catch {}
-    // 杀掉 ComfyUI 占用的端口进程
+    // 杀掉 ComfyUI (pythonw.exe / python.exe)
+    try { spawn("taskkill", ["/f", "/im", "pythonw.exe"]); } catch {}
+    try { spawn("taskkill", ["/f", "/im", "python.exe"]); } catch {}
+    // 额外强制释放 8188 端口
     try {
       const port = CONFIG.comfyui.port;
-      const { execSync } = await import("child_process");
+      const { execSync } = require("child_process");
       const pidInfo = execSync(`netstat -ano | findstr ":${port} "`).toString();
-      const matches = pidInfo.match(/(\d+)\s*$/m);
-      if (matches) {
-        spawn("taskkill", ["/f", "/pid", matches[1]]);
+      const lines = pidInfo.trim().split("\n");
+      for (const line of lines) {
+        const m = line.match(/(\d+)\s*$/m);
+        if (m) spawn("taskkill", ["/f", "/pid", m[1]]);
       }
     } catch {}
 

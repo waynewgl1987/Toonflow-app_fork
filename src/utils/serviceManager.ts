@@ -260,6 +260,20 @@ export async function ensureService(fnName: string, vendorId: string): Promise<b
 
   // ── 第 2 步：端口已开 → 检查 API 就绪 ──
   if (portOpen) {
+    // 即使当前服务已在运行，也要确保另一个冲突服务已停止（释放 VRAM）
+    const other = required === "comfyui" ? SERVICES.qwen3 : SERVICES.comfyui;
+    const otherBusy = await checkPort(other.port);
+    if (otherBusy) {
+      logger.genLog({ event: "svc_auto_stop_conflict", service: other.name, port: other.port, reason: `${svc.name} 已运行，停止冲突服务释放显存` });
+      await other.stop();
+      // 等待端口释放
+      for (let i = 0; i < 30; i++) {
+        const stillBusy = await checkPort(other.port);
+        if (!stillBusy) break;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+
     const apiReady = await checkApiReady(svc.port);
     if (apiReady) {
       // 服务完全就绪
@@ -278,7 +292,6 @@ export async function ensureService(fnName: string, vendorId: string): Promise<b
     logger.genLog({ event: "svc_auto_waiting_api", service: svc.name, port: svc.port,
       detail: "端口已开但服务未就绪（模型加载中），等待 API 就绪…" });
 
-    // 进入 API 等待（不经过启动步骤）
     const apiReady2 = await waitForApi(svc.port, 300000);
     if (!apiReady2) {
       logger.genLog({ event: "svc_auto_api_timeout", service: svc.name, port: svc.port });
