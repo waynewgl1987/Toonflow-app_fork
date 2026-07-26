@@ -7,11 +7,13 @@ type ConsoleMethod = (...args: unknown[]) => void;
 
 const LOG_DIR = getPath("logs");
 const LOG_FILE = path.join(LOG_DIR, "app.log");
-const MAX_SIZE = 1000 * 1024 * 1024;
+const MAX_SIZE = 100 * 1024 * 1024 * 1024; // 100GB - 避免频繁触发轮转阻塞事件循环
 const LEVELS: LogLevel[] = ["log", "info", "warn", "error", "debug"];
 
 class Logger {
   private stream: fs.WriteStream | null = null;
+  private genStream: fs.WriteStream | null = null;
+  private genDate: string = "";
   private originalConsole: Partial<Record<LogLevel, ConsoleMethod>> = {};
   private originalStdoutWrite: typeof process.stdout.write | null = null;
   private originalStderrWrite: typeof process.stderr.write | null = null;
@@ -20,8 +22,33 @@ class Logger {
   init(): this {
     if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
     this.stream = fs.createWriteStream(LOG_FILE, { flags: "a" });
+    this.ensureGenStream();
+    // 劫持 console / stdout / stderr 写入文件
     this.hijack();
     return this;
+  }
+
+  /** 确保生成日志流按日期切换 */
+  private ensureGenStream(): void {
+    const today = new Date().toISOString().slice(0, 10);
+    if (this.genDate !== today) {
+      this.genStream?.end();
+      const genFile = path.join(LOG_DIR, `generation-${today}.log`);
+      this.genStream = fs.createWriteStream(genFile, { flags: "a" });
+      this.genDate = today;
+    }
+  }
+
+  /** 写入结构化生成日志 (JSON lines) */
+  genLog(entry: Record<string, unknown>): void {
+    this.ensureGenStream();
+    const logLine = JSON.stringify({
+      time: this.formatTime(),
+      ...entry,
+    }) + "\n";
+    if (this.genStream && !this.genStream.destroyed) {
+      this.genStream.write(logLine);
+    }
   }
 
   private formatTime(): string {
@@ -66,16 +93,21 @@ class Logger {
     }
   }
 
+  private rotateCounter = 0;
+
   private checkRotate(): void {
+    // 每 100 次写操作检查一次文件大小，避免频繁 stat
+    this.rotateCounter++;
+    if (this.rotateCounter % 100 !== 0) return;
     try {
       if (!fs.existsSync(LOG_FILE) || fs.statSync(LOG_FILE).size < MAX_SIZE) return;
+      // 异步轮转：重命名旧文件并创建新流，避免同步读取大文件阻塞事件循环
       this.stream?.end();
-      // 单文件轮转：保留后半部分日志
-      const content = fs.readFileSync(LOG_FILE, "utf-8");
-      const half = content.slice(content.length >>> 1);
-      const firstNewline = half.indexOf("\n");
-      fs.writeFileSync(LOG_FILE, firstNewline >= 0 ? half.slice(firstNewline + 1) : half);
+      const renamed = LOG_FILE + "." + Date.now();
+      fs.renameSync(LOG_FILE, renamed);
       this.stream = fs.createWriteStream(LOG_FILE, { flags: "a" });
+      // 后台删除旧文件
+      fs.unlink(renamed, () => {});
     } catch {}
   }
 

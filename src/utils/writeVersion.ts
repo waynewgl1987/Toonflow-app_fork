@@ -19,7 +19,7 @@ export default async (version?: string) => {
   if (!fs.existsSync(versionFile)) {
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
   }
-  await fs.promises.writeFile(versionFile, version ?? APP_VERSION, "utf8");
+  fs.writeFileSync(versionFile, version ?? APP_VERSION, "utf8");
 };
 
 export const getVersion = async () => {
@@ -30,6 +30,6 @@ export const getVersion = async () => {
   if (!fs.existsSync(versionFile)) {
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
   }
-  await fs.promises.writeFile(versionFile, APP_VERSION, "utf8");
+  fs.writeFileSync(versionFile, APP_VERSION, "utf8");
   return APP_VERSION;
 };

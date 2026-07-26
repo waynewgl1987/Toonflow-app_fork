@@ -927,12 +927,15 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
             state: 1,
           },
         ];
+        console.log(`[数据库] o_skillList 开始生成 ${list.length} 条向量嵌入（可能需 30-60s，首次加载 ONNX 模型）...`);
+        const embedStart = Date.now();
         await Promise.all(
           list.map(async (item) => {
             const embedding = await getEmbedding(item.description);
             item.embedding = JSON.stringify(embedding);
           }),
         );
+        console.log(`[数据库] o_skillList 向量嵌入生成完成 (${Date.now() - embedStart}ms)`);
         await knex("o_skillList").insert(list);
       },
     },
@@ -1035,8 +1038,16 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
     },
   ];
 
+  let tableIdx = 0;
+  const initTblStart = Date.now();
   for (const t of tables) {
+    tableIdx++;
+    const traceStart = Date.now();
     const tableExists = await knex.schema.hasTable(t.name);
+    const traceElapsed = Date.now() - traceStart;
+    if (tableIdx <= 5 || traceElapsed > 100) {
+      console.log(`[initDB] 表 ${tableIdx}/${tables.length}: ${t.name} exists=${tableExists} (${traceElapsed}ms, 累计 ${Date.now() - initTblStart}ms)`);
+    }
     if (!tableExists || forceInit) {
       if (tableExists && forceInit) {
         await knex.schema.dropTable(t.name);

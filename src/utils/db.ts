@@ -34,11 +34,34 @@ const db = knex({
   useNullAsDefault: true,
 });
 
-(async () => {
-  await initDB(db);
-  await fixDB(db);
-  if (process.env.NODE_ENV == "dev") initKnexType(db);
-})();
+// 数据库是否初始化完成（用于路由层判断降级）
+export let dbReady = false;
+
+// 延迟初始化数据库：不在模块加载时执行，由 app.ts 在 server.listen 之后调用
+export async function initDatabase(): Promise<void> {
+  const dbStart = Date.now();
+  const dbPhase = (name: string) => console.log(`[数据库] ${name} (${Date.now() - dbStart}ms)`);
+  try {
+    dbPhase("开始表结构初始化");
+    // 改用原始 better-sqlite3 替代 knex.schema.hasTable（避免 esbuild bundle 导致 hasTable 阻塞）
+    await initDB(db);
+    dbPhase("表结构初始化完成");
+    await fixDB(db);
+    dbPhase("fixDB 迁移完成");
+    if (process.env.NODE_ENV == "dev") initKnexType(db).catch((e: any) => console.warn("[数据库] initKnexType 失败（不影响启动）:", e.message));
+    dbReady = true;
+    console.log(`[数据库] 初始化完成（总耗时 ${Date.now() - dbStart}ms）`);
+  } catch (err) {
+    console.error("[数据库] 初始化失败:", err instanceof Error ? err.message : err);
+    // 不阻塞启动，允许降级运行（部分功能可能不可用）
+  }
+}
+
+// 兼容旧版：仅在非 Electron 且非 prod 环境下自动初始化（开发模式）
+if (process.env.NODE_ENV !== "prod" && typeof process.versions?.electron === "undefined") {
+  setImmediate(() => { initDatabase().catch(() => {}); });
+  console.log("[数据库] 开发模式：延迟初始化已通过 setImmediate 调度");
+}
 
 const dbClient = Object.assign(<TName extends TableName>(table: TName) => db<RowType<TName>, RowType<TName>[]>(table), db);
 dbClient.schema = db.schema;

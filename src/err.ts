@@ -1,6 +1,6 @@
 import { serializeError } from "serialize-error";
 
-// 处理未捕获的 Promise 拒绝
+// 防止未捕获的 Promise 拒绝杀死进程
 process.on("unhandledRejection", (reason, promise) => {
   console.error("[未处理的 Promise 拒绝]");
   if (reason instanceof Error) {
@@ -18,11 +18,13 @@ process.on("unhandledRejection", (reason, promise) => {
     }
   }
   console.error("Promise:", promise);
+  // Node.js v15+ 默认会退出进程，但我们已经记录了错误，不主动退出
 });
 
-// 处理未捕获的异常
-process.on("uncaughtException", (error) => {
+// 处理未捕获的异常（注册监听器后 Node.js 不会自动退出）
+process.on("uncaughtException", (error, origin) => {
   console.error("[未捕获的异常]");
+  console.error("origin:", origin);
   console.error("错误名称:", error.name);
   console.error("错误消息:", error.message);
   console.error("堆栈信息:", error.stack);

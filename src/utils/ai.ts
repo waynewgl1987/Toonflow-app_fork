@@ -2,7 +2,10 @@ import { generateText, streamText, wrapLanguageModel, stepCountIs, extractReason
 import { devToolsMiddleware } from "@ai-sdk/devtools";
 import axios from "axios";
 import { transform } from "sucrase";
+import * as fs from "fs";
 import u from "@/utils";
+import logger from "@/logger";
+import { ensureService } from "@/utils/serviceManager";
 
 type AiType =
   | "scriptAgent"
@@ -117,6 +120,10 @@ async function getVendorTemplateFn(
 async function getVendorTemplateFn(fnName: Exclude<FnName, "textRequest">, modelName: `${string}:${string}`): Promise<(input: any) => any>;
 async function getVendorTemplateFn(fnName: FnName, modelName: `${string}:${string}`): Promise<any> {
   const [id, name] = modelName.split(/:(.+)/);
+
+  // 自动管理服务：在调用前确保所需服务已启动
+  await ensureService(fnName, id);
+
   const vendorConfigData = await u.db("o_vendorConfig").where("id", id).first();
   if (!vendorConfigData) throw new Error(`未找到供应商配置 id=${id}`);
   const modelList = await u.vendor.getModelList(id);
@@ -126,7 +133,17 @@ async function getVendorTemplateFn(fnName: FnName, modelName: `${string}:${strin
   const jsCode = transform(code, { transforms: ["typescript"] }).code;
   const running = u.vm(jsCode);
   if (running.vendor) {
-    Object.assign(running.vendor.inputValues, JSON.parse(vendorConfigData.inputValues ?? "{}"));
+    const inputValues = JSON.parse(vendorConfigData.inputValues ?? "{}");
+    // 支持 file:// 路径加载工作流 JSON 文件（在沙箱外读取）
+    for (const key of Object.keys(inputValues)) {
+      if (typeof inputValues[key] === "string" && inputValues[key].startsWith("file://")) {
+        const filePath = inputValues[key].slice(7);
+        if (fs.existsSync(filePath)) {
+          inputValues[key] = fs.readFileSync(filePath, "utf-8");
+        }
+      }
+    }
+    Object.assign(running.vendor.inputValues, inputValues);
     running.vendor.models = modelList;
   }
   const fn = running[fnName];
@@ -149,15 +166,20 @@ async function withTaskRecord<T>(
 ): Promise<T> {
   const modelName = await resolveModelName(modelKey);
   const [_, model] = modelName.split(/:(.+)/);
+  const recordId = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  logger.genLog({ event: "ai_call_start", recordId, modelKey, model, taskClass, describe, projectId, relatedObjects });
   const taskRecord = await u.task(projectId, taskClass, model, { describe: describe, content: relatedObjects });
   try {
     const result = await fn(modelName, false, 0);
 
     taskRecord(1);
+    logger.genLog({ event: "ai_call_success", recordId, modelKey, model, taskClass, projectId });
     return result;
   } catch (e) {
-    taskRecord(-1, u.error(e).message);
-    throw new Error(u.error(e).message);
+    const errMsg = u.error(e).message;
+    taskRecord(-1, errMsg);
+    logger.genLog({ event: "ai_call_error", recordId, modelKey, model, taskClass, projectId, error: errMsg, stack: (e as Error).stack });
+    throw new Error(errMsg);
   }
 }
 
@@ -178,10 +200,12 @@ class AiText {
   private AiType: AiType | `${string}:${string}`;
   private think?: boolean;
   private thinkLevel: 0 | 1 | 2 | 3;
+  private recordId: string;
   constructor(AiType: AiType | `${string}:${string}`, think?: boolean, thinkLevel: 0 | 1 | 2 | 3 = 0) {
     this.AiType = AiType;
     this.think = think;
     this.thinkLevel = thinkLevel;
+    this.recordId = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
   private async resolveModel(middleware?: any | any[]) {
     const switchAiDevTool = await u.db("o_setting").where("key", "switchAiDevTool").first();
@@ -196,25 +220,41 @@ class AiText {
   }
   async invoke(input: Omit<Parameters<typeof generateText>[0], "model">) {
     const config = await getModelConfig(this.AiType);
-
-    return generateText({
-      ...(input.tools && { stopWhen: stepCountIs(Object.keys(input.tools).length * 50) }),
-      ...input,
-      model: await this.resolveModel(),
-      ...(config?.temperature && { temperature: config.temperature }),
-      ...(config?.maxOutputTokens && { maxOutputTokens: config.maxOutputTokens }),
-    } as Parameters<typeof generateText>[0]);
+    const modelName = await resolveModelName(this.AiType);
+    logger.genLog({ event: "text_invoke_start", recordId: this.recordId, aiType: this.AiType, modelName, inputSnippet: JSON.stringify(input).slice(0, 200) });
+    try {
+      const result = await generateText({
+        ...(input.tools && { stopWhen: stepCountIs(Object.keys(input.tools).length * 50) }),
+        ...input,
+        model: await this.resolveModel(),
+        ...(config?.temperature && { temperature: config.temperature }),
+        ...(config?.maxOutputTokens && { maxOutputTokens: config.maxOutputTokens }),
+      } as Parameters<typeof generateText>[0]);
+      logger.genLog({ event: "text_invoke_success", recordId: this.recordId, aiType: this.AiType, modelName, usage: result.usage });
+      return result;
+    } catch (e) {
+      logger.genLog({ event: "text_invoke_error", recordId: this.recordId, aiType: this.AiType, modelName, error: (e as Error).message, stack: (e as Error).stack });
+      throw e;
+    }
   }
   async stream(input: Omit<Parameters<typeof streamText>[0], "model">) {
     const config = await getModelConfig(this.AiType);
-
-    return streamText({
-      ...(input.tools && { stopWhen: stepCountIs(Object.keys(input.tools).length * 50) }),
-      ...input,
-      model: await this.resolveModel(extractReasoningMiddleware({ tagName: "reasoning_content", separator: "\n" })),
-      ...(config?.temperature && { temperature: config.temperature }),
-      ...(config?.maxOutputTokens && { maxOutputTokens: config.maxOutputTokens }),
-    } as Parameters<typeof streamText>[0]);
+    const modelName = await resolveModelName(this.AiType);
+    logger.genLog({ event: "text_stream_start", recordId: this.recordId, aiType: this.AiType, modelName, inputSnippet: JSON.stringify(input).slice(0, 200) });
+    try {
+      const result = await streamText({
+        ...(input.tools && { stopWhen: stepCountIs(Object.keys(input.tools).length * 50) }),
+        ...input,
+        model: await this.resolveModel(extractReasoningMiddleware({ tagName: "reasoning_content", separator: "\n" })),
+        ...(config?.temperature && { temperature: config.temperature }),
+        ...(config?.maxOutputTokens && { maxOutputTokens: config.maxOutputTokens }),
+      } as Parameters<typeof streamText>[0]);
+      logger.genLog({ event: "text_stream_success", recordId: this.recordId, aiType: this.AiType, modelName });
+      return result;
+    } catch (e) {
+      logger.genLog({ event: "text_stream_error", recordId: this.recordId, aiType: this.AiType, modelName, error: (e as Error).message, stack: (e as Error).stack });
+      throw e;
+    }
   }
 }
 
@@ -246,11 +286,14 @@ interface TaskRecord {
 class AiImage {
   private key: `${string}:${string}`;
   private result: string = "";
+  private recordId: string;
   constructor(key: `${string}:${string}`) {
     this.key = key;
+    this.recordId = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
   async run(input: ImageConfig, taskRecord?: TaskRecord) {
     const modelName = await resolveModelName(this.key);
+    logger.genLog({ event: "image_run_start", recordId: this.recordId, key: this.key, modelName, prompt: input.prompt?.slice(0, 200), size: input.size, taskClass: taskRecord?.taskClass, projectId: taskRecord?.projectId });
     const exec = async (mn: `${string}:${string}`) => {
       const fn = await getVendorTemplateFn("imageRequest", mn);
       await referenceList2imageBase642(mn.split(/:(.+)/)[0], input);
@@ -258,14 +301,22 @@ class AiImage {
       if (this.result.startsWith("http")) this.result = await urlToBase64(this.result);
       return this;
     };
-    if (taskRecord) {
-      await withTaskRecord(this.key, taskRecord.taskClass, taskRecord.describe, taskRecord.relatedObjects, taskRecord.projectId, exec);
+    try {
+      if (taskRecord) {
+        await withTaskRecord(this.key, taskRecord.taskClass, taskRecord.describe, taskRecord.relatedObjects, taskRecord.projectId, exec);
+        logger.genLog({ event: "image_run_success", recordId: this.recordId, key: this.key });
+        return this;
+      }
+      await exec(modelName);
+      logger.genLog({ event: "image_run_success", recordId: this.recordId, key: this.key });
       return this;
+    } catch (e) {
+      logger.genLog({ event: "image_run_error", recordId: this.recordId, key: this.key, error: (e as Error).message, stack: (e as Error).stack });
+      throw e;
     }
-    await exec(modelName);
-    return this;
   }
   async save(path: string) {
+    logger.genLog({ event: "image_save", recordId: this.recordId, path });
     await u.oss.writeFile(path, this.result);
     return this;
   }
@@ -292,11 +343,14 @@ interface VideoConfig {
 class AiVideo {
   private key: `${string}:${string}`;
   private result: string = "";
+  private recordId: string;
   constructor(key: `${string}:${string}`) {
     this.key = key;
+    this.recordId = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
   async run(input: VideoConfig, taskRecord?: TaskRecord) {
     const modelName = await resolveModelName(this.key);
+    logger.genLog({ event: "video_run_start", recordId: this.recordId, key: this.key, modelName, prompt: input.prompt?.slice(0, 200), taskClass: taskRecord?.taskClass, projectId: taskRecord?.projectId });
     try {
       const exec = async (mn: `${string}:${string}`) => {
         const fn = await getVendorTemplateFn("videoRequest", mn);
@@ -308,15 +362,19 @@ class AiVideo {
       };
       if (taskRecord) {
         await withTaskRecord(this.key, taskRecord.taskClass, taskRecord.describe, taskRecord.relatedObjects, taskRecord.projectId, exec);
+        logger.genLog({ event: "video_run_success", recordId: this.recordId, key: this.key });
         return this;
       }
       await exec(modelName);
+      logger.genLog({ event: "video_run_success", recordId: this.recordId, key: this.key });
       return this;
     } catch (e) {
+      logger.genLog({ event: "video_run_error", recordId: this.recordId, key: this.key, error: (e as Error).message, stack: (e as Error).stack });
       throw e;
     }
   }
   async save(path: string) {
+    logger.genLog({ event: "video_save", recordId: this.recordId, path });
     await u.oss.writeFile(path, this.result);
     return this;
   }
@@ -324,11 +382,14 @@ class AiVideo {
 class AiAudio {
   private key: `${string}:${string}`;
   private result: string = "";
+  private recordId: string;
   constructor(key: `${string}:${string}`) {
     this.key = key;
+    this.recordId = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
   async run(input: VideoConfig, taskRecord?: TaskRecord) {
     const modelName = await resolveModelName(this.key);
+    logger.genLog({ event: "audio_run_start", recordId: this.recordId, key: this.key, modelName, taskClass: taskRecord?.taskClass, projectId: taskRecord?.projectId });
     const exec = async (mn: `${string}:${string}`) => {
       try {
         const fn = await getVendorTemplateFn("ttsRequest", mn);
@@ -337,14 +398,27 @@ class AiAudio {
 
         if (this.result.startsWith("http")) this.result = await urlToBase64(this.result);
         return this;
-      } catch (e) {}
+      } catch (e) {
+        logger.genLog({ event: "audio_exec_error", recordId: this.recordId, key: this.key, error: (e as Error).message });
+        throw e;
+      }
     };
-    if (taskRecord) {
-      return withTaskRecord(this.key, taskRecord.taskClass, taskRecord.describe, taskRecord.relatedObjects, taskRecord.projectId, exec);
+    try {
+      if (taskRecord) {
+        await withTaskRecord(this.key, taskRecord.taskClass, taskRecord.describe, taskRecord.relatedObjects, taskRecord.projectId, exec);
+        logger.genLog({ event: "audio_run_success", recordId: this.recordId, key: this.key });
+        return this;
+      }
+      await exec(modelName);
+      logger.genLog({ event: "audio_run_success", recordId: this.recordId, key: this.key });
+      return this;
+    } catch (e) {
+      logger.genLog({ event: "audio_run_error", recordId: this.recordId, key: this.key, error: (e as Error).message, stack: (e as Error).stack });
+      throw e;
     }
-    return await exec(modelName);
   }
   async save(path: string) {
+    logger.genLog({ event: "audio_save", recordId: this.recordId, path });
     await u.oss.writeFile(path, this.result);
     return this;
   }
