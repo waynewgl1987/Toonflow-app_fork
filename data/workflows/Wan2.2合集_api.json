@@ -1,0 +1,559 @@
+{
+  "prompt": {
+    "453": {
+      "class_type": "llama_cpp_parameters",
+      "inputs": {
+        "input_0": 0,
+        "input_1": 30,
+        "input_2": 0.9,
+        "input_3": 0.05,
+        "input_4": 1,
+        "input_5": 0.8,
+        "input_6": 1,
+        "input_7": 0,
+        "input_8": 1,
+        "input_9": 0,
+        "input_10": 0.1,
+        "input_11": 5
+      }
+    },
+    "454": {
+      "class_type": "llama_cpp_model_loader",
+      "inputs": {
+        "input_0": "Qwen3-VL-8B-Instruct-abliterated-v2.0.Q8_0.gguf",
+        "input_1": "Qwen3-VL-8B-Instruct-abliterated-v2.0.mmproj-Q8_0.gguf",
+        "input_2": "Qwen3-VL",
+        "input_3": false,
+        "input_4": 8192,
+        "input_5": -1,
+        "input_6": false
+      }
+    },
+    "693": {
+      "class_type": "llama_cpp_parameters",
+      "inputs": {
+        "input_0": 0,
+        "input_1": 30,
+        "input_2": 0.9,
+        "input_3": 0.05,
+        "input_4": 1,
+        "input_5": 0.8,
+        "input_6": 1,
+        "input_7": 0,
+        "input_8": 1,
+        "input_9": 0,
+        "input_10": 0.1,
+        "input_11": 5
+      }
+    },
+    "694": {
+      "class_type": "llama_cpp_model_loader",
+      "inputs": {
+        "input_0": "Qwen3-VL-8B-Instruct-abliterated-v2.0.Q8_0.gguf",
+        "input_1": "Qwen3-VL-8B-Instruct-abliterated-v2.0.mmproj-Q8_0.gguf",
+        "input_2": "Qwen3-VL",
+        "input_3": false,
+        "input_4": 8192,
+        "input_5": -1,
+        "input_6": false
+      }
+    },
+    "695": {
+      "class_type": "ImageBatch",
+      "inputs": {
+        "image1": [
+          "696",
+          0
+        ],
+        "image2": [
+          "697",
+          0
+        ]
+      }
+    },
+    "455": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "5月11日 (3) (1).jpg",
+        "upload": "image"
+      }
+    },
+    "456": {
+      "class_type": "ShowText|pysssss",
+      "inputs": {
+        "text": [
+          "457",
+          0
+        ]
+      }
+    },
+    "696": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "5月11日 (3) (1).jpg",
+        "upload": "image"
+      }
+    },
+    "697": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "klein_00099_.png",
+        "upload": "image"
+      }
+    },
+    "699": {
+      "class_type": "ShowText|pysssss",
+      "inputs": {
+        "text": [
+          "698",
+          0
+        ]
+      }
+    },
+    "209": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "749",
+          0
+        ]
+      }
+    },
+    "152": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "748",
+          0
+        ]
+      }
+    },
+    "747": {
+      "class_type": "101065b4-f790-4d05-9325-3b831ff77fa6",
+      "inputs": {
+        "image": [
+          "527",
+          0
+        ],
+        "positive": [
+          "528",
+          0
+        ]
+      }
+    },
+    "527": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "1.jpg",
+        "upload": "image"
+      }
+    },
+    "668": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "747",
+          1
+        ]
+      }
+    },
+    "748": {
+      "class_type": "f5460e4d-8e14-42b4-b7d8-ebc6e76ebf94",
+      "inputs": {
+        "image": [
+          "150",
+          0
+        ],
+        "positive": [
+          "152",
+          0
+        ]
+      }
+    },
+    "150": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "5月30日 (2).jpg",
+        "upload": "image"
+      }
+    },
+    "667": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "748",
+          1
+        ]
+      }
+    },
+    "528": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "747",
+          0
+        ]
+      }
+    },
+    "749": {
+      "class_type": "47fda44d-f1ee-4127-88e9-1af6b222eca9",
+      "inputs": {
+        "image": [
+          "225",
+          0
+        ],
+        "image_1": [
+          "223",
+          0
+        ],
+        "positive": [
+          "209",
+          0
+        ]
+      }
+    },
+    "223": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "5月30日 (2)(2).jpg",
+        "upload": "image"
+      }
+    },
+    "225": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "7b_00001_.jpg",
+        "upload": "image"
+      }
+    },
+    "666": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "749",
+          1
+        ]
+      }
+    },
+    "750": {
+      "class_type": "dfc193c1-9d7a-423e-b2d2-f3d3e3a41dd9",
+      "inputs": {
+        "image": [
+          "688",
+          0
+        ],
+        "positive": [
+          "689",
+          0
+        ]
+      }
+    },
+    "688": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ç__å_¾_00002_.png",
+        "upload": "image"
+      }
+    },
+    "690": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "750",
+          1
+        ]
+      }
+    },
+    "751": {
+      "class_type": "ab0da5bc-b620-409b-bef9-d8574dbbef58",
+      "inputs": {
+        "image": [
+          "720",
+          0
+        ],
+        "positive": [
+          "723",
+          0
+        ],
+        "image_1": [
+          "721",
+          0
+        ]
+      }
+    },
+    "720": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "5月11日 (3) (1).jpg",
+        "upload": "image"
+      }
+    },
+    "721": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "klein_00099_.png",
+        "upload": "image"
+      }
+    },
+    "722": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "751",
+          1
+        ]
+      }
+    },
+    "754": {
+      "class_type": "e3d684a5-8503-4253-a467-44c11797925f",
+      "inputs": {
+        "positive": [
+          "643",
+          0
+        ],
+        "image": [
+          "641",
+          0
+        ],
+        "generation_width": [
+          "649",
+          0
+        ],
+        "positive_1": [
+          "652",
+          0
+        ],
+        "positive_2": [
+          "651",
+          0
+        ]
+      }
+    },
+    "643": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "754",
+          0
+        ]
+      }
+    },
+    "651": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "754",
+          0
+        ]
+      }
+    },
+    "652": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "754",
+          0
+        ]
+      }
+    },
+    "649": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 640
+      }
+    },
+    "641": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ComfyUI_00006_.png",
+        "upload": "image"
+      }
+    },
+    "650": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "754",
+          1
+        ]
+      }
+    },
+    "698": {
+      "class_type": "llama_cpp_instruct_adv",
+      "inputs": {
+        "input_0": "Prompt Style - Extreme Detailed",
+        "input_1": "",
+        "input_2": "结合我加载的视频首尾帧图片，提供动作连贯，剧情合理。5秒拆解，时长符合动作逻辑，用于Wan2.2首尾帧图生视频使用的中文提示词。提示词要简洁,并且带有人物情绪和动感的运镜。",
+        "input_3": false,
+        "input_4": 16,
+        "input_5": 768,
+        "input_6": 940076664271363,
+        "input_7": "randomize",
+        "llmamodel": [
+          "694",
+          0
+        ],
+        "parameters": [
+          "693",
+          0
+        ],
+        "images": [
+          "695",
+          0
+        ]
+      }
+    },
+    "457": {
+      "class_type": "llama_cpp_instruct_adv",
+      "inputs": {
+        "input_0": "Normal - Describe",
+        "input_1": "",
+        "input_2": "结合我加载的图片，提供动作连贯，剧情合理。5秒拆解，时长符合动作逻辑，用于Wan2.2图生视频使用的提示词。提示词要简洁,并且带有人物情绪和动感的运镜。",
+        "input_3": false,
+        "input_4": 16,
+        "input_5": 768,
+        "input_6": 49080227855963,
+        "input_7": "randomize",
+        "llmamodel": [
+          "454",
+          0
+        ],
+        "parameters": [
+          "453",
+          0
+        ],
+        "images": [
+          "455",
+          0
+        ]
+      }
+    },
+    "689": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "750",
+          0
+        ]
+      }
+    },
+    "723": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "751",
+          0
+        ]
+      }
+    },
+    "618": {
+      "class_type": "Fast Groups Bypasser (rgthree)",
+      "inputs": {}
+    }
+  },
+  "_meta": {
+    "title": "Wan2.2合集",
+    "clip_node_ids": [
+      "209",
+      "152",
+      "528",
+      "643",
+      "651",
+      "652",
+      "689",
+      "723"
+    ],
+    "all_node_types": [
+      "101065b4-f790-4d05-9325-3b831ff77fa6",
+      "47fda44d-f1ee-4127-88e9-1af6b222eca9",
+      "CLIPTextEncode",
+      "Fast Groups Bypasser (rgthree)",
+      "ImageBatch",
+      "LoadImage",
+      "ShowText|pysssss",
+      "VHS_VideoCombine",
+      "ab0da5bc-b620-409b-bef9-d8574dbbef58",
+      "dfc193c1-9d7a-423e-b2d2-f3d3e3a41dd9",
+      "e3d684a5-8503-4253-a467-44c11797925f",
+      "easy int",
+      "f5460e4d-8e14-42b4-b7d8-ebc6e76ebf94",
+      "llama_cpp_instruct_adv",
+      "llama_cpp_model_loader",
+      "llama_cpp_parameters"
+    ]
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "prompt": {
+    "1177": {
+      "class_type": "cb102824-852c-4b99-ac42-eb66b8c37748",
+      "inputs": {
+        "any": [
+          "1052",
+          0
+        ]
+      }
+    },
+    "1236": {
+      "class_type": "07bab92c-dd2f-44cb-9292-a995904b2cb3",
+      "inputs": {
+        "a": [
+          "1046",
+          0
+        ],
+        "image": [
+          "1053",
+          0
+        ],
+        "generation_width": [
+          "1047",
+          0
+        ],
+        "positive": [
+          "1051",
+          0
+        ]
+      }
+    },
+    "1235": {
+      "class_type": "e20fe641-a76e-40ab-a094-9ebc3ca140cc",
+      "inputs": {
+        "images": [
+          "1236",
+          1
+        ],
+        "audio": [
+          "1236",
+          2
+        ],
+        "frame_rate": [
+          "1236",
+          3
+        ]
+      }
+    },
+    "1053": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "klein_00004_.png",
+        "upload": "image"
+      }
+    },
+    "1041": {
+      "class_type": "ShowText|pysssss",
+      "inputs": {
+        "input_0": "Starting from the scene shown in image, the camera slowly pushes forward through a snow-covered traditional Chinese city street at night, with falling snowflakes swirling in the air. The warm lights from wooden buildings cast flickering reflections on the icy canal below, while pedestrians walk along the bridge and sidewalks, their breath visible in the cold air. Snow accumulates on rooftops, awnings, and lanterns, with gentle drifts forming on the ground. As the camera moves forward, the bustling crowd on the bridge gradually comes into focus, revealing their bundled-up figures moving steadily through the winter scene. In the distance, towering modern skyscrapers loom through the misty, snowy haze, creating a striking contrast between ancient architecture and futuristic skyline. The ambient sound of footsteps crunching on snow, distant chatter, and gentle wind whistling through eaves blend into a cozy yet mysterious atmosphere, with soft background music that evokes a sense of nostalgia and wonder.",
+        "text": [
+          "1052",
+          0
+        ]
+      }
+    },
+    "1047": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 1160
+      }
+    },
+    "1046": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 10
+      }
+    },
+    "1051": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "1236",
+          0
+        ]
+      }
+    },
+    "1044": {
+      "class_type": "Fast Groups Bypasser (rgthree)",
+      "inputs": {}
+    },
+    "1238": {
+      "class_type": "Note",
+      "inputs": {
+        "input_0": "【1451】-1920*108 【1160】-1536*864   【960】-1280*720   \n LTX2.3模型 支持长视频和高分辨率\n 默认10秒    1536*864分辨率"
+      }
+    },
+    "1052": {
+      "class_type": "llama_cpp_instruct_adv",
+      "inputs": {
+        "input_0": "Normal - Describe",
+        "input_1": "这里填写需优化的提示词  ",
+        "input_2": "## Context\n你是一位精通 ComfyUI 和 LTX-2 模型的图生视频提示词工程师。你的任务是根据用户提供的【参考图描述】和【故事情节描述】，生成专用于 LTX-2 I2V模式的详细的自然语言的英文提示词，对话内容按输入文字直接显示，不要翻译对话内容。特别注意：只输出生成的提示词，除了提示词不要输出其他解释或回答内容。\n\n## LTX-2 I2V 编写核心原则（至关重要）\n1.  **动作优先**：在I2V模式下，已经通过 Image 节点输入了图像，因此提示词**不要**把重点放在重复描述静态外貌上，而要**百分之百集中在描述动作、变化和镜头的演进上**。\n2.  **继承与激活**：你要把静态图片看作是视频的\"第 1 帧\"，提示词的作用是\"激活\"这个初始状态，让它动起来。\n3.  **细节描写**：必须描述动作带来的物理细节变化（如：皱纹、毛发飘动、光影折射、灰尘漂浮）。\n4.  **镜头语言**：必须指定相机的运动方式。\n5.  **对话语言**：输入的对话语言禁止翻译成英文，如果输入的对话为中文，那么就直接以中文原文输出，禁止翻译，禁止修改。\n\n## 工作流程\n1.  **分析输入**：\n    -   【参考图描述】（决定主角是谁，在哪里，初始状态）。\n    -   【故事情节描述】（决定接下来要发生什么动作）。\n2.  **合成提示词**：\n    -   以最快的速度确认主体（例如: Starting from the [Subject] shown in image...）。\n    -   详细描述故事情节中的动作，动作要平滑、自然。。\n3.  **视频概念描述**：\n    -   参考下方视频概念描述规范对视频之后的人物动作、运镜、环境变化进行全方位的详细概念描述，但不用描写画面的起始信息，仅描写接下来发生的后续内容。\n\n视频概念描述规范：\n1、视频美学控制\n    光线类型：柔光、硬光、顶光、侧光、背光、底光、边缘光、剪影、低对比度、高对比度\n    时间段：白天、夜晚、黄昏、日落、黎明、日出\n    景别：特写、近景、中景、中近景、中全景、全景、广角\n    构图：中心构图、平衡构图、右 / 左侧重构图、对称构图、短边构图\n    镜头\n    镜头焦段：中焦距、广角、长焦、望远、超广角\n    机位角度：过肩角度、高角度、低角度、倾斜角度、航拍、俯视角度\n    镜头类型：干净的单人镜头、双人镜头、三人镜头、群像镜头、定场镜头\n    色调：暖色调、冷色调、高饱和度、低饱和度\n\n2、动态控制\n    运动：街舞、跑步、滑滑板、踢足球、网球、乒乓球、滑雪、篮球、橄榄球、顶碗舞、侧手翻\n    人物情绪：愤怒、恐惧、高兴、悲伤、惊讶\n    基础运镜：镜头推进、镜头拉远、镜头向右移动、镜头向左移动、镜头上摇\n    高级运镜：手持镜头、复合运镜、跟随镜头、环绕运镜\n\n3、风格化表现\n    视觉风格：毛毡风格、木偶动画、二次元、黑白动画、移轴摄影\n    特效镜头：无具体明细（可根据创作需求自定义描述）\n\n4、视频声音生成\n    人声：说话内容 + 情绪 + 语调 + 语速 + 音色 + 口音\n    音效：音源材质 + 行为 + 环境音\n    环境音：作为音效组成部分，随场景自定义（如室内安静、户外嘈杂、雨声等）\n    背景音乐：配乐 + 风格（如悬疑风格、治愈风格、国风等）\n\n## 现在请接收户的输入，开始生成 LTX-2 I2V 提示词。",
+        "input_3": false,
+        "input_4": 16,
+        "input_5": 768,
+        "input_6": 536324455630981,
+        "input_7": "randomize",
+        "llmamodel": [
+          "1177",
+          1
+        ],
+        "parameters": [
+          "1177",
+          0
+        ],
+        "images": [
+          "1053",
+          0
+        ]
+      }
+    }
+  },
+  "_meta": {
+    "title": "LTX2.3  单图视频",
+    "clip_node_ids": [
+      "1051"
+    ],
+    "all_node_types": [
+      "07bab92c-dd2f-44cb-9292-a995904b2cb3",
+      "CLIPTextEncode",
+      "Fast Groups Bypasser (rgthree)",
+      "INTConstant",
+      "LoadImage",
+      "Note",
+      "ShowText|pysssss",
+      "cb102824-852c-4b99-ac42-eb66b8c37748",
+      "e20fe641-a76e-40ab-a094-9ebc3ca140cc",
+      "easy int",
+      "llama_cpp_instruct_adv"
+    ]
+  }
+}

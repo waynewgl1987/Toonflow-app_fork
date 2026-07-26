@@ -1,0 +1,240 @@
+{
+  "prompt": {
+    "772": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 1451
+      }
+    },
+    "770": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "klein_00001_ (1).png",
+        "upload": "image"
+      }
+    },
+    "765": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "flux2/klein",
+        "images": [
+          "1123",
+          0
+        ]
+      }
+    },
+    "1098": {
+      "class_type": "565e2996-ae17-44b6-a7ee-589e14b4baf9",
+      "inputs": {
+        "any": [
+          "403",
+          0
+        ]
+      }
+    },
+    "998": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "flux2/生图",
+        "images": [
+          "1110",
+          1
+        ]
+      }
+    },
+    "1110": {
+      "class_type": "b666cb78-77e0-4437-b9bd-8ad689bb3546",
+      "inputs": {
+        "positive": [
+          "550",
+          0
+        ],
+        "latent_image": [
+          "853",
+          0
+        ]
+      }
+    },
+    "550": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "1110",
+          0
+        ]
+      }
+    },
+    "853": {
+      "class_type": "EmptyFlux2LatentImage",
+      "inputs": {
+        "input_0": 864,
+        "input_1": 1536,
+        "input_2": 1
+      }
+    },
+    "1123": {
+      "class_type": "7888059c-24a7-49c8-801c-e6e818eeb4c6",
+      "inputs": {
+        "conditioning": [
+          "773",
+          0
+        ],
+        "image": [
+          "770",
+          0
+        ],
+        "generation_width": [
+          "772",
+          0
+        ]
+      }
+    },
+    "773": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "1123",
+          1
+        ]
+      }
+    },
+    "1141": {
+      "class_type": "c5ba0cd6-18af-4815-8725-559ba626e181",
+      "inputs": {
+        "conditioning": [
+          "839",
+          0
+        ],
+        "image": [
+          "837",
+          0
+        ],
+        "generation_width": [
+          "840",
+          0
+        ],
+        "image_1": [
+          "831",
+          0
+        ]
+      }
+    },
+    "839": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "1141",
+          1
+        ]
+      }
+    },
+    "840": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 1451
+      }
+    },
+    "837": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "Edit_00003_.png",
+        "upload": "image"
+      }
+    },
+    "831": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "2首.jpg",
+        "upload": "image"
+      }
+    },
+    "841": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "flux2/klein",
+        "images": [
+          "1141",
+          0
+        ]
+      }
+    },
+    "401": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "2首.jpg",
+        "upload": "image"
+      }
+    },
+    "403": {
+      "class_type": "llama_cpp_instruct_adv",
+      "inputs": {
+        "input_0": "Prompt Style - Extreme Detailed",
+        "input_1": "包含中英文两个版本",
+        "input_2": "提取图片中所有可见的视觉信息，提供极致详细描述词，不要带解释和说明性废话，只填写图片中确实可见的信息，不猜测、不推断、不虚构，描述要具体、准确、有细节，避免模糊泛泛的描述（如\"好看\"\"不错\"\"漂亮\"）。内容包含，种族，详细姿势，表情，发型，妆容，服饰，配饰，人物与环境的空间关系，中景，背景，环境细节，光线，构图，色调，摄影风格等",
+        "input_3": false,
+        "input_4": 2,
+        "input_5": 768,
+        "input_6": 718204843092357,
+        "input_7": "randomize",
+        "llmamodel": [
+          "1098",
+          1
+        ],
+        "parameters": [
+          "1098",
+          0
+        ],
+        "images": [
+          "401",
+          0
+        ]
+      }
+    },
+    "402": {
+      "class_type": "ShowText|pysssss",
+      "inputs": {
+        "input_0": "中文版：\n画面展现了一条蜿蜒穿过浓雾森林的小径。前景是几棵粗壮的树干，树皮纹理粗糙，部分树根裸露于地面，表面覆盖着苔藓。小径由落叶和泥土构成，向画面深处延伸，逐渐被弥漫的薄雾所遮蔽。林间地面覆盖着低矮的绿色植被和散落的白色小花。背景中树木密集，枝叶在雾气中若隐若现，远处光线微弱，营造出幽深、静谧的氛围。整体色调偏冷灰绿，光线从树冠上方透下，形成斑驳的光影效果。构图采用中心透视，引导视线深入林间。摄影风格写实，带有自然主义倾向。\n\nEnglish Version:\nThe image depicts a winding path through a misty forest. In the foreground, several thick tree trunks are visible, their rough bark textured and some exposed roots emerging from the ground, covered in moss. The path is made of fallen leaves and dirt, extending into the distance and gradually obscured by the pervasive mist. The forest floor is covered with low green vegetation and scattered small white flowers. In the background, trees are densely packed, with branches and leaves faintly visible through the fog, and distant light is weak, creating an atmosphere of deep quietude. The overall color palette is cool, gray-green, with dappled light filtering down from the canopy. The composition uses central perspective to draw the viewer's gaze deeper into the forest. The photographic style is realistic, leaning towards naturalism.",
+        "text": [
+          "403",
+          0
+        ]
+      }
+    },
+    "702": {
+      "class_type": "Note",
+      "inputs": {
+        "input_0": "分辨率： \n1451=1080*1920    1160=1536*864\n960=1280*720      770=1024*576    640=480*832\n                         \n\n将视角改为 正面平视 侧面视角 背面视角  斜侧视角  俯视  仰视  四分之三测\n\n将景别改为 远景 全景 中景 近景 特写  大特写 极端特写\n\n将画面变高清\n把图1的人物放在图2的场景\n"
+      }
+    },
+    "701": {
+      "class_type": "Fast Groups Bypasser (rgthree)",
+      "inputs": {}
+    }
+  },
+  "_meta": {
+    "title": "生图和图像编辑",
+    "clip_node_ids": [
+      "550",
+      "773",
+      "839"
+    ],
+    "all_node_types": [
+      "565e2996-ae17-44b6-a7ee-589e14b4baf9",
+      "7888059c-24a7-49c8-801c-e6e818eeb4c6",
+      "CLIPTextEncode",
+      "EmptyFlux2LatentImage",
+      "Fast Groups Bypasser (rgthree)",
+      "LoadImage",
+      "Note",
+      "SaveImage",
+      "ShowText|pysssss",
+      "b666cb78-77e0-4437-b9bd-8ad689bb3546",
+      "c5ba0cd6-18af-4815-8725-559ba626e181",
+      "easy int",
+      "llama_cpp_instruct_adv"
+    ]
+  }
+}

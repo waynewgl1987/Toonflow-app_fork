@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toonflow 控制台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f0f13;color:#e0e0e0;min-height:100vh}
+.container{max-width:960px;margin:0 auto;padding:20px}
+h1{font-size:20px;font-weight:600;margin-bottom:2px}
+.subtitle{font-size:12px;color:#888;margin-bottom:16px}
+/* status row */
+.status-row{display:flex;gap:16px;font-size:12px;color:#888;margin-bottom:16px;flex-wrap:wrap}
+.status-row span{display:flex;align-items:center;gap:4px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot.green{background:#22c55e}
+.dot.red{background:#ef4444}
+.dot.yellow{background:#eab308}
+/* service cards */
+.card-row{display:flex;gap:12px;margin-bottom:16px}
+.card{flex:1;background:#1a1a24;border:1px solid #2a2a3a;border-radius:12px;padding:16px}
+.card-h{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+.card-name{font-size:15px;font-weight:600}
+.card-desc{font-size:11px;color:#666}
+.card-status{font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:10px}
+.btn{padding:6px 16px;border-radius:6px;border:none;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-pri{background:#3b82f6;color:#fff}
+.btn-pri:hover:not(:disabled){background:#2563eb}
+.btn-dgr{background:#ef4444;color:#fff}
+.btn-dgr:hover:not(:disabled){background:#dc2626}
+.btn-out{background:transparent;color:#888;border:1px solid #2a2a3a}
+.btn-out:hover:not(:disabled){color:#e0e0e0;border-color:#555}
+.actions{display:flex;gap:8px;margin-top:16px;justify-content:center;flex-wrap:wrap}
+/* log panel */
+.log-section{margin-top:4px}
+.log-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px}
+.log-header h2{font-size:14px;font-weight:600;color:#ccc}
+.log-controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.log-controls button{padding:3px 10px;border-radius:4px;border:none;font-size:11px;cursor:pointer}
+.live-indicator{display:flex;align-items:center;gap:4px;font-size:11px;color:#22c55e}
+.live-indicator .pulse{width:6px;height:6px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite}
+@keyframes pulse{0%{opacity:1}50%{opacity:.3}100%{opacity:1}}
+.filter-bar{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.filter-tag{padding:2px 8px;border-radius:10px;font-size:10px;cursor:pointer;border:1px solid #2a2a3a;background:transparent;color:#888;transition:all .1s}
+.filter-tag:hover{border-color:#555;color:#e0e0e0}
+.filter-tag.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
+.log-panel{background:#0a0a0f;border:1px solid #2a2a3a;border-radius:8px;padding:8px;height:45vh;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.5}
+.log-entry{display:flex;gap:8px;padding:2px 4px;border-bottom:1px solid #111;align-items:baseline}
+.log-entry .lt{color:#444;min-width:80px;flex-shrink:0}
+.log-entry .le{min-width:100px;flex-shrink:0;font-weight:500}
+.log-entry .le.err{color:#ef4444}
+.log-entry .le.ok{color:#22c55e}
+.log-entry .le.go{color:#3b82f6}
+.log-entry .le.svc{color:#a78bfa}
+.log-entry .le.warn{color:#eab308}
+.log-entry .ld{color:#666;word-break:break-all}
+.log-entry.new-row{animation:hl .8s ease-out}
+@keyframes hl{from{background:#3b82f622}to{background:transparent}}
+/* toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:10px 20px;font-size:13px;display:none;max-width:500px;text-align:center;z-index:100}
+.toast.show{display:block;animation:fadeIn .3s}
+@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.count-info{font-size:11px;color:#555}
+/* responsive */
+@media(max-width:640px){.card-row{flex-direction:column}.log-entry{flex-wrap:wrap;gap:2px}.log-entry .lt{min-width:70px}.log-entry .le{min-width:80px}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Toonflow 控制台</h1>
+<p class="subtitle">服务管理 · 实时运行日志</p>
+
+<!-- Status bar -->
+<div class="status-row" id="statusRow">
+  <span><span class="dot green"></span> App 运行中</span>
+  <span id="sq"><span class="dot red"></span> Qwen3: off</span>
+  <span id="sc"><span class="dot red"></span> ComfyUI: off</span>
+</div>
+
+<!-- Service cards -->
+<div class="card-row" id="cards">
+  <div style="text-align:center;color:#666;padding:20px;flex:1">加载中...</div>
+</div>
+
+<div class="actions">
+  <button class="btn btn-out" onclick="refresh()">刷新状态</button>
+  <button class="btn btn-dgr" onclick="stopAll()">停止所有</button>
+</div>
+
+<!-- Log section -->
+<div class="log-section">
+  <div class="log-header">
+    <h2>运行日志</h2>
+    <div class="log-controls">
+      <span class="live-indicator" id="liveIndicator"><span class="pulse"></span> 实时</span>
+      <button class="btn btn-out" onclick="toggleLive()" id="liveBtn">暂停</button>
+      <button class="btn btn-out" onclick="loadGenLog()">刷新</button>
+      <button class="btn btn-dgr" onclick="clearLog()">清空</button>
+      <span class="count-info" id="countInfo">0 条</span>
+    </div>
+  </div>
+  <div class="filter-bar" id="filterBar"></div>
+  <div class="log-panel" id="logPanel">加载中...</div>
+</div>
+
+<div id="toast" class="toast"></div>
+</div>
+
+<script>
+// ===== Service Control =====
+const A = "/api/services";
+function logMsg(m) {
+  const p = document.getElementById("logPanel");
+  const t = new Date().toLocaleTimeString();
+  const d = document.createElement("div");
+  d.className = "log-entry new-row";
+  d.innerHTML = '<span class="lt">'+t+'</span><span class="le svc">[SYS]</span><span class="ld">'+esc(m)+'</span>';
+  p.insertBefore(d, p.firstChild);
+  if(p.children.length>500) p.removeChild(p.lastChild);
+}
+function toast(m, e) {
+  const t = document.getElementById("toast");
+  t.textContent = m;
+  t.style.borderColor = e ? "#ef4444" : "#2a2a3a";
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), e ? 5000 : 3000);
+}
+async function api(p, o) {
+  try { const r = await fetch(A+p, {headers:{"Content-Type":"application/json"}, ...o}); const t = await r.text(); return JSON.parse(t); }
+  catch(e) { return {success:false, message:e.message}; }
+}
+async function refresh() {
+  const r = await api("/status");
+  if(!r.success) { document.getElementById("cards").innerHTML = '<div style="color:#f87171;padding:20px;flex:1">'+r.message+'</div>'; return; }
+  const d = r.data;
+  document.getElementById("cards").innerHTML = card("qwen3", d.qwen3) + card("comfyui", d.comfyui);
+  document.getElementById("sq").innerHTML = '<span class="dot '+(d.qwen3.running?"green":"red")+'"></span> Qwen3: '+(d.qwen3.running?"on":"off");
+  document.getElementById("sc").innerHTML = '<span class="dot '+(d.comfyui.running?"green":"red")+'"></span> ComfyUI: '+(d.comfyui.running?"on":"off");
+  logMsg("服务状态 | Qwen3="+(d.qwen3.running?"运行":"停止")+" ComfyUI="+(d.comfyui.running?"运行":"停止"));
+}
+function card(id, s) {
+  const on = s.running;
+  return '<div class="card"><div class="card-h"><div><div class="card-name">'+s.name+'</div><div class="card-desc">端口 '+s.port+'</div></div></div>'+
+    '<div class="card-status"><span class="dot '+(on?"green":"red")+'"></span> '+(on?"运行中":"已停止")+'</div>'+
+    '<div>'+(on?'<button class="btn btn-dgr" onclick="stopSvc(\''+id+'\')">停止</button>':'<button class="btn btn-pri" onclick="startSvc(\''+id+'\')">启动</button>')+'</div></div>';
+}
+async function startSvc(id) {
+  logMsg("正在启动 "+id+"...");
+  toast("正在启动...");
+  const r = await api("/"+(id==="qwen3"?"start-qwen3":"start-comfyui"), {method:"POST"});
+  if(r.success) { toast(r.message||"OK", false); logMsg("启动成功: "+r.message); }
+  else { toast(r.message||"启动失败", true); logMsg("启动失败: "+r.message); }
+  setTimeout(refresh, id==="qwen3"?3000:5000);
+}
+async function stopSvc(id) {
+  logMsg("正在停止...");
+  toast("正在停止...");
+  const r = await api("/stop-all", {method:"POST"});
+  toast(r.message||"已停止", !r.success);
+  logMsg("停止: "+(r.message||"done"));
+  setTimeout(refresh, 1500);
+}
+async function stopAll() {
+  logMsg("停止所有服务...");
+  toast("正在停止所有...");
+  const r = await api("/stop-all", {method:"POST"});
+  toast(r.message||"完成", !r.success);
+  setTimeout(refresh, 1500);
+}
+
+// ===== Generation Log Viewer =====
+let allEntries = [], filteredEntries = [], eventFilter = "", liveMode = true, pollTimer = null, lastCount = 0;
+
+async function loadGenLog() {
+  try {
+    const r = await fetch("/api/services/generation-log?"+Date.now());
+    if(!r.ok) { document.getElementById("logPanel").textContent = "暂无日志，请先生成内容。"; return; }
+    const d = await r.json();
+    if(!d.success) return;
+    const entries = d.data || [];
+    if(entries.length !== lastCount) {
+      lastCount = entries.length;
+      allEntries = entries.reverse();
+      applyFilter();
+    }
+  } catch(e) { /* silent */ }
+}
+function applyFilter() {
+  filteredEntries = eventFilter ? allEntries.filter(e => e.event === eventFilter) : allEntries;
+  document.getElementById("countInfo").textContent = filteredEntries.length+"/"+allEntries.length+" 条";
+  renderLog();
+}
+function renderLog() {
+  const el = document.getElementById("logPanel");
+  const tags = new Set(allEntries.map(e => e.event));
+  const fb = document.getElementById("filterBar");
+  fb.innerHTML = '<span class="filter-tag'+(eventFilter===""?' active':'')+'" onclick="eventFilter=\'\';applyFilter()">全部 ('+allEntries.length+')</span>';
+  tags.forEach(t => {
+    const c = allEntries.filter(e => e.event === t).length;
+    fb.innerHTML += '<span class="filter-tag'+(eventFilter===t?' active':'')+'" onclick="eventFilter=\''+t+'\';applyFilter()">'+t+' ('+c+')</span>';
+  });
+  el.innerHTML = filteredEntries.map(e => renderEntry(e)).join("");
+  if(liveMode && el.children.length) el.lastChild.scrollIntoView({behavior:"smooth", block:"end"});
+}
+function eventClass(evt) {
+  if(!evt) return "";
+  const l = evt.toLowerCase();
+  if(l.includes("error")||l.includes("fail")||l.includes("timeout")||l.includes("zombie")) return "err";
+  if(l.includes("success")||l.includes("complete")||l.includes("listening")||l.includes("ready")||l.includes("done")) return "ok";
+  if(l.includes("start")&&!l.includes("success")) return "go";
+  if(l.startsWith("svc_")) return "svc";
+  return "";
+}
+function renderEntry(e) {
+  const detail = JSON.stringify(e, (k,v) => {
+    if(k==="stack") return v ? v.slice(0,160)+"..." : v;
+    if(k==="inputSnippet") return v ? v.slice(0,80)+"..." : v;
+    return v;
+  }, 0);
+  return '<div class="log-entry"><span class="lt">'+(e.time||"").slice(11,22)+'</span><span class="le '+eventClass(e.event)+'">'+(e.event||"")+'</span><span class="ld">'+esc(detail)+'</span></div>';
+}
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function toggleLive() {
+  liveMode = !liveMode;
+  document.getElementById("liveBtn").textContent = liveMode ? "暂停" : "实时";
+  document.getElementById("liveIndicator").style.display = liveMode ? "flex" : "none";
+  if(liveMode) { loadGenLog(); startPoll(); } else stopPoll();
+}
+function startPoll() { stopPoll(); pollTimer = setInterval(loadGenLog, 3000); }
+function stopPoll() { if(pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+async function clearLog() {
+  if(!confirm("确定清空日志文件？")) return;
+  try { await fetch("/api/services/clear-log", {method:"POST"}); allEntries = []; applyFilter(); logMsg("日志已清空"); } catch(e) {}
+}
+
+// ===== Init =====
+refresh();
+loadGenLog();
+startPoll();
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+{
+  "prompt": {
+    "831": {
+      "class_type": "deaa09e1-d244-4782-9d94-30460280ce54",
+      "inputs": {
+        "image": [
+          "838",
+          0
+        ],
+        "positive": [
+          "832",
+          0
+        ]
+      }
+    },
+    "836": {
+      "class_type": "f4eb8fdc-d916-4ecc-bfae-7d4d7f10913d",
+      "inputs": {}
+    },
+    "838": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "5月11日(1).jpg",
+        "upload": "image"
+      }
+    },
+    "835": {
+      "class_type": "ShowText|pysssss",
+      "inputs": {
+        "input_0": "镜头缓缓推进，怪物困惑地挠着头，黄色眼睛闪烁着不解，浓雾森林背景静谧而神秘。",
+        "text": [
+          "837",
+          0
+        ]
+      }
+    },
+    "832": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "831",
+          0
+        ]
+      }
+    },
+    "833": {
+      "class_type": "f0b5842f-ef7e-4deb-866c-6c6535eb8320",
+      "inputs": {
+        "image": [
+          "838",
+          0
+        ],
+        "positive": [
+          "834",
+          0
+        ]
+      }
+    },
+    "834": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "833",
+          0
+        ]
+      }
+    },
+    "837": {
+      "class_type": "llama_cpp_instruct_adv",
+      "inputs": {
+        "input_0": "Normal - Describe",
+        "input_1": "镜头缓缓推进，怪物疑惑的抓头",
+        "input_2": "结合我加载的图片，提供动作连贯，剧情合理。5秒拆解，时长符合动作逻辑，用于Wan2.2图生视频使用的提示词。提示词要简洁,并且带有人物情绪和动感的运镜。",
+        "input_3": false,
+        "input_4": 16,
+        "input_5": 768,
+        "input_6": 292844989884749,
+        "input_7": "randomize",
+        "llmamodel": [
+          "836",
+          1
+        ],
+        "parameters": [
+          "836",
+          0
+        ],
+        "images": [
+          "838",
+          0
+        ]
+      }
+    },
+    "839": {
+      "class_type": "Fast Groups Bypasser (rgthree)",
+      "inputs": {}
+    }
+  },
+  "_meta": {
+    "title": "Wan2.2   单图视频",
+    "clip_node_ids": [
+      "832",
+      "834"
+    ],
+    "all_node_types": [
+      "CLIPTextEncode",
+      "Fast Groups Bypasser (rgthree)",
+      "LoadImage",
+      "ShowText|pysssss",
+      "deaa09e1-d244-4782-9d94-30460280ce54",
+      "f0b5842f-ef7e-4deb-866c-6c6535eb8320",
+      "f4eb8fdc-d916-4ecc-bfae-7d4d7f10913d",
+      "llama_cpp_instruct_adv"
+    ]
+  }
+}

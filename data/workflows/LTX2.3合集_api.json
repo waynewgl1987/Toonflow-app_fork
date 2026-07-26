@@ -1,0 +1,1013 @@
+{
+  "prompt": {
+    "270": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 5
+      }
+    },
+    "272": {
+      "class_type": "Note",
+      "inputs": {
+        "input_0": "【1451】-1920*1080   【只能横屏  1秒/2分钟】\n【1160】-1536*864    【只能横屏  22分钟】\n 【960】-1280*720             （15分钟）\n 【640】-480*832\n\n"
+      }
+    },
+    "376": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 10
+      }
+    },
+    "226": {
+      "class_type": "llama_cpp_instruct_adv",
+      "inputs": {
+        "input_0": "Normal - Describe",
+        "input_1": "镜头跟随女子边走边唱，她正在深情的唱歌,场景随着移动变化，随着步伐和微风吹得她们的头发轻微的摆动。镜头轻微抖动，模仿手持镜头拍摄，保持中景",
+        "input_2": "## Context\n你是一位精通 ComfyUI 和 LTX-2 模型的图生视频提示词工程师。你的任务是根据用户提供的【参考图描述】和【故事情节描述】，生成专用于 LTX-2 I2V模式的详细的自然语言的英文提示词，对话内容按输入文字直接显示，不要翻译对话内容。特别注意：只输出生成的提示词，除了提示词不要输出其他解释或回答内容。\n\n## LTX-2 I2V 编写核心原则（至关重要）\n1.  **动作优先**：在I2V模式下，已经通过 Image 节点输入了图像，因此提示词**不要**把重点放在重复描述静态外貌上，而要**百分之百集中在描述动作、变化和镜头的演进上**。\n2.  **继承与激活**：你要把静态图片看作是视频的\"第 1 帧\"，提示词的作用是\"激活\"这个初始状态，让它动起来。\n3.  **细节描写**：必须描述动作带来的物理细节变化（如：皱纹、毛发飘动、光影折射、灰尘漂浮）。\n4.  **镜头语言**：必须指定相机的运动方式。\n5.  **对话语言**：输入的对话语言禁止翻译成英文，如果输入的对话为中文，那么就直接以中文原文输出，禁止翻译，禁止修改。\n\n## 工作流程\n1.  **分析输入**：\n    -   【参考图描述】（决定主角是谁，在哪里，初始状态）。\n    -   【故事情节描述】（决定接下来要发生什么动作）。\n2.  **合成提示词**：\n    -   以最快的速度确认主体（例如: Starting from the [Subject] shown in image...）。\n    -   详细描述故事情节中的动作，动作要平滑、自然。。\n3.  **视频概念描述**：\n    -   参考下方视频概念描述规范对视频之后的人物动作、运镜、环境变化进行全方位的详细概念描述，但不用描写画面的起始信息，仅描写接下来发生的后续内容。\n\n视频概念描述规范：\n1、视频美学控制\n    光线类型：柔光、硬光、顶光、侧光、背光、底光、边缘光、剪影、低对比度、高对比度\n    时间段：白天、夜晚、黄昏、日落、黎明、日出\n    景别：特写、近景、中景、中近景、中全景、全景、广角\n    构图：中心构图、平衡构图、右 / 左侧重构图、对称构图、短边构图\n    镜头\n    镜头焦段：中焦距、广角、长焦、望远、超广角\n    机位角度：过肩角度、高角度、低角度、倾斜角度、航拍、俯视角度\n    镜头类型：干净的单人镜头、双人镜头、三人镜头、群像镜头、定场镜头\n    色调：暖色调、冷色调、高饱和度、低饱和度\n\n2、动态控制\n    运动：街舞、跑步、滑滑板、踢足球、网球、乒乓球、滑雪、篮球、橄榄球、顶碗舞、侧手翻\n    人物情绪：愤怒、恐惧、高兴、悲伤、惊讶\n    基础运镜：镜头推进、镜头拉远、镜头向右移动、镜头向左移动、镜头上摇\n    高级运镜：手持镜头、复合运镜、跟随镜头、环绕运镜\n\n3、风格化表现\n    视觉风格：毛毡风格、木偶动画、二次元、黑白动画、移轴摄影\n    特效镜头：无具体明细（可根据创作需求自定义描述）\n\n4、视频声音生成\n    人声：说话内容 + 情绪 + 语调 + 语速 + 音色 + 口音\n    音效：音源材质 + 行为 + 环境音\n    环境音：作为音效组成部分，随场景自定义（如室内安静、户外嘈杂、雨声等）\n    背景音乐：配乐 + 风格（如悬疑风格、治愈风格、国风等）\n\n## 现在请接收户的输入，开始生成 LTX-2 I2V 提示词。",
+        "input_3": false,
+        "input_4": 16,
+        "input_5": 768,
+        "input_6": 1096880894908426,
+        "input_7": "randomize",
+        "llmamodel": [
+          "675",
+          1
+        ],
+        "parameters": [
+          "675",
+          0
+        ],
+        "images": [
+          "225",
+          0
+        ]
+      }
+    },
+    "388": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "732",
+          1
+        ],
+        "audio": [
+          "732",
+          2
+        ],
+        "frame_rate": [
+          "732",
+          3
+        ]
+      }
+    },
+    "390": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "847",
+          1
+        ],
+        "audio": [
+          "847",
+          2
+        ],
+        "frame_rate": [
+          "847",
+          3
+        ]
+      }
+    },
+    "460": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 5
+      }
+    },
+    "459": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 1160
+      }
+    },
+    "269": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 1160
+      }
+    },
+    "315": {
+      "class_type": "LoadAudio",
+      "inputs": {
+        "input_0": "spk_1779607710.wav",
+        "input_1": null,
+        "input_2": null
+      }
+    },
+    "294": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 1160
+      }
+    },
+    "313": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 5
+      }
+    },
+    "377": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 1160
+      }
+    },
+    "273": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "732",
+          0
+        ]
+      }
+    },
+    "387": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "761",
+          1
+        ],
+        "audio": [
+          "315",
+          0
+        ],
+        "frame_rate": [
+          "761",
+          2
+        ]
+      }
+    },
+    "320": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "761",
+          0
+        ]
+      }
+    },
+    "425": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "794",
+          3
+        ],
+        "audio": [
+          "794",
+          2
+        ],
+        "frame_rate": [
+          "794",
+          1
+        ]
+      }
+    },
+    "423": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 5
+      }
+    },
+    "417": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 960
+      }
+    },
+    "426": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "794",
+          0
+        ]
+      }
+    },
+    "344": {
+      "class_type": "EmptyLTXVLatentVideo",
+      "inputs": {
+        "input_0": 1536,
+        "input_1": 864,
+        "input_2": 361,
+        "input_3": 1,
+        "length": [
+          "818",
+          4
+        ]
+      }
+    },
+    "343": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 5
+      }
+    },
+    "389": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "818",
+          3
+        ],
+        "audio": [
+          "818",
+          2
+        ],
+        "frame_rate": [
+          "818",
+          1
+        ]
+      }
+    },
+    "374": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "847",
+          0
+        ]
+      }
+    },
+    "382": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "Edit_00049_.jpg",
+        "upload": "image"
+      }
+    },
+    "458": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "生成结果-1772453060993.png",
+        "upload": "image"
+      }
+    },
+    "463": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "877",
+          1
+        ],
+        "audio": [
+          "461",
+          0
+        ],
+        "frame_rate": [
+          "877",
+          2
+        ]
+      }
+    },
+    "461": {
+      "class_type": "LoadAudio",
+      "inputs": {
+        "input_0": "童可可 - 做你的新娘.mp3",
+        "input_1": null,
+        "input_2": null
+      }
+    },
+    "462": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "877",
+          0
+        ]
+      }
+    },
+    "521": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "905",
+          1
+        ],
+        "audio": [
+          "905",
+          2
+        ],
+        "frame_rate": [
+          "905",
+          3
+        ]
+      }
+    },
+    "525": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 10
+      }
+    },
+    "526": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 320
+      }
+    },
+    "530": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "905",
+          0
+        ]
+      }
+    },
+    "522": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "704",
+          1
+        ],
+        "audio": [
+          "519",
+          0
+        ],
+        "frame_rate": [
+          "704",
+          2
+        ]
+      }
+    },
+    "520": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 5
+      }
+    },
+    "529": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "704",
+          0
+        ]
+      }
+    },
+    "519": {
+      "class_type": "LoadAudio",
+      "inputs": {
+        "input_0": "spk_1779607710.wav",
+        "input_1": null,
+        "input_2": null
+      }
+    },
+    "523": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 320
+      }
+    },
+    "672": {
+      "class_type": "f73afc87-baaf-4a80-b651-d6e27b35e930",
+      "inputs": {
+        "positive": [
+          "564",
+          0
+        ],
+        "a": [
+          "559",
+          0
+        ],
+        "image": [
+          "562",
+          0
+        ],
+        "image_1": [
+          "561",
+          0
+        ],
+        "generation_width": [
+          "563",
+          0
+        ]
+      }
+    },
+    "560": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "672",
+          1
+        ],
+        "audio": [
+          "672",
+          2
+        ],
+        "frame_rate": [
+          "672",
+          3
+        ]
+      }
+    },
+    "563": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 320
+      }
+    },
+    "559": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 10
+      }
+    },
+    "561": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "2帧.jpg",
+        "upload": "image"
+      }
+    },
+    "562": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "4单.jpg",
+        "upload": "image"
+      }
+    },
+    "564": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "672",
+          0
+        ]
+      }
+    },
+    "673": {
+      "class_type": "7fa32117-b852-48a1-b982-9db790c5f77b",
+      "inputs": {
+        "positive": [
+          "629",
+          0
+        ],
+        "audio": [
+          "628",
+          0
+        ],
+        "a": [
+          "632",
+          0
+        ],
+        "image": [
+          "630",
+          0
+        ],
+        "image_1": [
+          "634",
+          0
+        ],
+        "generation_width": [
+          "633",
+          0
+        ]
+      }
+    },
+    "629": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "673",
+          0
+        ]
+      }
+    },
+    "631": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "input_0": "frame_rate",
+        "input_1": "loop_count",
+        "input_2": "filename_prefix",
+        "input_3": "format",
+        "input_4": "pix_fmt",
+        "input_5": "crf",
+        "input_6": "save_metadata",
+        "input_7": "trim_to_audio",
+        "input_8": "pingpong",
+        "input_9": "save_output",
+        "input_10": "videopreview",
+        "images": [
+          "673",
+          1
+        ],
+        "audio": [
+          "628",
+          0
+        ],
+        "frame_rate": [
+          "673",
+          2
+        ]
+      }
+    },
+    "632": {
+      "class_type": "INTConstant",
+      "inputs": {
+        "input_0": 5
+      }
+    },
+    "633": {
+      "class_type": "easy int",
+      "inputs": {
+        "input_0": 320
+      }
+    },
+    "634": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "2帧.jpg",
+        "upload": "image"
+      }
+    },
+    "630": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "4单.jpg",
+        "upload": "image"
+      }
+    },
+    "628": {
+      "class_type": "LoadAudio",
+      "inputs": {
+        "input_0": "月尊.MP3",
+        "input_1": null,
+        "input_2": null
+      }
+    },
+    "231": {
+      "class_type": "ShowText|pysssss",
+      "inputs": {
+        "input_0": "从图像中的女子开始，她缓缓向前行走，同时深情地歌唱。她那乌黑的长发随着每一步和微风轻轻飘动，发丝细腻地拂过她的脸庞与肩头。摄像机以手持风格平稳跟随她的动作，带有轻微的自然抖动，以模拟真实动态。整个镜头始终保持中景距离，始终框住她的躯干和上半身，随着她前行而移动。背景景色随她的步伐流畅变换——雾气弥漫的林间小径、布满青苔的石头，以及透过树梢洒落的柔和漫射光线，都在她身后悄然流转。她身着的传统蓝白长袍在每一步中微幅飘动，展现出精致的织物纹理，以及那条精巧的金色腰带，在光影中隐约闪烁。整体氛围宁静安详，森林的自然声响轻柔地融入她的歌声之中。",
+        "text": [
+          "232",
+          0
+        ]
+      }
+    },
+    "675": {
+      "class_type": "35880413-95e4-4594-9c8b-fdb651cd42bb",
+      "inputs": {
+        "any": [
+          "226",
+          0
+        ]
+      }
+    },
+    "227": {
+      "class_type": "ShowText|pysssss",
+      "inputs": {
+        "input_0": "Starting from the girl shown in image, she walks forward while singing deeply, her hair gently swaying with every step due to the light breeze. The camera follows her movement smoothly, maintaining a medium shot with slight handheld shake for an immersive, natural feel. As she moves, the background scenery changes subtly, revealing more of the misty forest around her. Her facial expressions shift slightly with emotion as she sings, and fine details like strands of hair drifting across her face or slight wrinkles forming around her eyes become visible due to movement. The lighting remains soft and diffused, with a cool-toned, low-saturation atmosphere, enhancing the emotional depth. The camera subtly tilts and pans to match her walking motion, keeping her centered as she progresses through the scene.",
+        "text": [
+          "226",
+          0
+        ]
+      }
+    },
+    "225": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "4单.jpg",
+        "upload": "image"
+      }
+    },
+    "704": {
+      "class_type": "b7728123-0d89-4e81-ae3c-9751523628bf",
+      "inputs": {
+        "positive": [
+          "529",
+          0
+        ],
+        "image": [
+          "528",
+          0
+        ],
+        "generation_width": [
+          "523",
+          0
+        ],
+        "a": [
+          "520",
+          0
+        ],
+        "audio": [
+          "519",
+          0
+        ]
+      }
+    },
+    "528": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "4单.jpg",
+        "upload": "image"
+      }
+    },
+    "732": {
+      "class_type": "4bef05c2-d0d2-4abb-864b-b1b272edfa49",
+      "inputs": {
+        "a": [
+          "270",
+          0
+        ],
+        "image": [
+          "268",
+          0
+        ],
+        "generation_width": [
+          "269",
+          0
+        ],
+        "positive": [
+          "273",
+          0
+        ]
+      }
+    },
+    "268": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "4单.jpg",
+        "upload": "image"
+      }
+    },
+    "761": {
+      "class_type": "2abded9a-ecf9-4b59-a5f1-29f55c7ec0c9",
+      "inputs": {
+        "positive": [
+          "320",
+          0
+        ],
+        "audio": [
+          "315",
+          0
+        ],
+        "image": [
+          "314",
+          0
+        ],
+        "generation_width": [
+          "294",
+          0
+        ],
+        "a": [
+          "313",
+          0
+        ]
+      }
+    },
+    "314": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "vdsvfdsv.jpg",
+        "upload": "image"
+      }
+    },
+    "794": {
+      "class_type": "8b9e5eef-3026-475c-bb0c-9be04928754d",
+      "inputs": {
+        "a": [
+          "423",
+          0
+        ],
+        "image": [
+          "424",
+          0
+        ],
+        "generation_width": [
+          "417",
+          0
+        ],
+        "positive": [
+          "426",
+          0
+        ]
+      }
+    },
+    "424": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "3.png",
+        "upload": "image"
+      }
+    },
+    "818": {
+      "class_type": "1513a08d-be81-4516-ac55-914e832b42bc",
+      "inputs": {
+        "positive": [
+          "345",
+          0
+        ],
+        "video_latent": [
+          "344",
+          0
+        ],
+        "a": [
+          "343",
+          0
+        ]
+      }
+    },
+    "345": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "818",
+          0
+        ]
+      }
+    },
+    "847": {
+      "class_type": "f3900a10-20ea-40eb-b455-411e5d151721",
+      "inputs": {
+        "positive": [
+          "374",
+          0
+        ],
+        "a": [
+          "376",
+          0
+        ],
+        "image": [
+          "382",
+          0
+        ],
+        "image_1": [
+          "379",
+          0
+        ],
+        "generation_width": [
+          "377",
+          0
+        ]
+      }
+    },
+    "379": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "5月11日(4) (1).jpg",
+        "upload": "image"
+      }
+    },
+    "877": {
+      "class_type": "2370a61b-b358-4c48-8c7f-b5f282fd87e4",
+      "inputs": {
+        "positive": [
+          "462",
+          0
+        ],
+        "audio": [
+          "461",
+          0
+        ],
+        "a": [
+          "460",
+          0
+        ],
+        "image": [
+          "458",
+          0
+        ],
+        "image_1": [
+          "457",
+          0
+        ],
+        "generation_width": [
+          "459",
+          0
+        ]
+      }
+    },
+    "457": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "1.jpg",
+        "upload": "image"
+      }
+    },
+    "905": {
+      "class_type": "a657345f-fb93-4abf-91d2-72b1c383b034",
+      "inputs": {
+        "a": [
+          "525",
+          0
+        ],
+        "image": [
+          "524",
+          0
+        ],
+        "generation_width": [
+          "526",
+          0
+        ],
+        "positive": [
+          "530",
+          0
+        ]
+      }
+    },
+    "524": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "1.jpg",
+        "upload": "image"
+      }
+    },
+    "909": {
+      "class_type": "ffa73b49-256d-4cd0-b21d-0f08fcf57efa",
+      "inputs": {
+        "any": [
+          "232",
+          0
+        ]
+      }
+    },
+    "232": {
+      "class_type": "llama_cpp_instruct_adv",
+      "inputs": {
+        "input_0": "Normal - Describe",
+        "input_1": "Starting from the woman in the image, she begins to walk slowly forward while singing with deep emotion. Her long black hair gently sways with each step and the subtle breeze, individual strands moving delicately around her face and shoulders. The camera follows her movement smoothly in a handheld style, with slight natural jitter to mimic real-time motion. The shot remains at a medium distance throughout, keeping her torso and upper body in frame as she moves. The background scenery transitions fluidly with her pace — misty forest paths, moss-covered stones, and soft diffused light filtering through the trees subtly shift behind her. Her traditional blue-and-white robe ripples slightly with each step, revealing delicate fabric texture and the intricate golden belt catching faint glimmers. The atmosphere remains serene, with ambient forest sounds gently blending into her voice as she sings.",
+        "input_2": "仅翻译，中文翻译英文，英文翻译中文",
+        "input_3": false,
+        "input_4": 2,
+        "input_5": 768,
+        "input_6": 696110664671768,
+        "input_7": "randomize",
+        "llmamodel": [
+          "909",
+          1
+        ],
+        "parameters": [
+          "909",
+          0
+        ]
+      }
+    },
+    "910": {
+      "class_type": "Fast Groups Bypasser (rgthree)",
+      "inputs": {}
+    }
+  },
+  "_meta": {
+    "title": "LTX2.3合集",
+    "clip_node_ids": [
+      "273",
+      "320",
+      "426",
+      "374",
+      "462",
+      "530",
+      "529",
+      "564",
+      "629",
+      "345"
+    ],
+    "all_node_types": [
+      "1513a08d-be81-4516-ac55-914e832b42bc",
+      "2370a61b-b358-4c48-8c7f-b5f282fd87e4",
+      "2abded9a-ecf9-4b59-a5f1-29f55c7ec0c9",
+      "35880413-95e4-4594-9c8b-fdb651cd42bb",
+      "4bef05c2-d0d2-4abb-864b-b1b272edfa49",
+      "7fa32117-b852-48a1-b982-9db790c5f77b",
+      "8b9e5eef-3026-475c-bb0c-9be04928754d",
+      "CLIPTextEncode",
+      "EmptyLTXVLatentVideo",
+      "Fast Groups Bypasser (rgthree)",
+      "INTConstant",
+      "LoadAudio",
+      "LoadImage",
+      "Note",
+      "ShowText|pysssss",
+      "VHS_VideoCombine",
+      "a657345f-fb93-4abf-91d2-72b1c383b034",
+      "b7728123-0d89-4e81-ae3c-9751523628bf",
+      "easy int",
+      "f3900a10-20ea-40eb-b455-411e5d151721",
+      "f73afc87-baaf-4a80-b651-d6e27b35e930",
+      "ffa73b49-256d-4cd0-b21d-0f08fcf57efa",
+      "llama_cpp_instruct_adv"
+    ]
+  }
+}

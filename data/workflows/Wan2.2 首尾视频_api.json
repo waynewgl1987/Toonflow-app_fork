@@ -1,0 +1,141 @@
+{
+  "prompt": {
+    "939": {
+      "class_type": "4ed28abe-720e-4568-8c58-cdda3d058ded",
+      "inputs": {
+        "image1": [
+          "947",
+          0
+        ],
+        "image2": [
+          "946",
+          0
+        ]
+      }
+    },
+    "947": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "5月11日(1).jpg",
+        "upload": "image"
+      }
+    },
+    "942": {
+      "class_type": "5de8b434-5cee-4c0a-98e0-ab190c01a5f9",
+      "inputs": {
+        "image": [
+          "946",
+          0
+        ],
+        "image_1": [
+          "947",
+          0
+        ],
+        "positive": [
+          "945",
+          0
+        ]
+      }
+    },
+    "945": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "942",
+          0
+        ]
+      }
+    },
+    "940": {
+      "class_type": "e43f42d9-c28a-42a1-8093-1b353f8d4b8e",
+      "inputs": {
+        "image": [
+          "947",
+          0
+        ],
+        "positive": [
+          "941",
+          0
+        ],
+        "image_1": [
+          "946",
+          0
+        ]
+      }
+    },
+    "941": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "__PROMPT__",
+        "clip": [
+          "940",
+          0
+        ]
+      }
+    },
+    "944": {
+      "class_type": "ShowText|pysssss",
+      "inputs": {
+        "input_0": "5秒拆解提示词：\n\n0-1s：低角度推近，怪物皱眉挠头，眼神困惑，喃喃自语“这人怎么…”，雾林背景虚化。\n\n1-2s：镜头拉远至过肩视角，怪物突然直起身，瞳孔骤缩，手指颤抖着指向女子，肌肉紧绷。\n\n2-3s：快速跟拍怪物手臂，指尖在空中划出疑问弧线，嘴型夸张地嘟囔“她…是…谁？”\n\n3-4s：突然切到女子背影特写，她平静转身，长发垂落，镜头轻微晃动模拟紧张感。\n\n4-5s：双人对峙全景，怪物后退半步，眼神从困惑转为警惕，运镜缓慢环绕两人，雾气弥漫中透出悬疑感。",
+        "text": [
+          "943",
+          0
+        ]
+      }
+    },
+    "943": {
+      "class_type": "llama_cpp_instruct_adv",
+      "inputs": {
+        "input_0": "Normal - Describe",
+        "input_1": "怪物疑惑的用手指向女子，嘴里嘀咕",
+        "input_2": "结合我加载的视频首尾帧图片，提供动作连贯，剧情合理。5秒拆解，时长符合动作逻辑，用于Wan2.2首尾帧图生视频使用的中文提示词。提示词要简洁,并且带有人物情绪和动感的运镜。",
+        "input_3": false,
+        "input_4": 16,
+        "input_5": 768,
+        "input_6": 813895189003809,
+        "input_7": "randomize",
+        "llmamodel": [
+          "939",
+          1
+        ],
+        "parameters": [
+          "939",
+          0
+        ],
+        "images": [
+          "939",
+          2
+        ]
+      }
+    },
+    "946": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "Edit_00049_.jpg",
+        "upload": "image"
+      }
+    },
+    "948": {
+      "class_type": "Fast Groups Bypasser (rgthree)",
+      "inputs": {}
+    }
+  },
+  "_meta": {
+    "title": "Wan2.2 首尾视频",
+    "clip_node_ids": [
+      "945",
+      "941"
+    ],
+    "all_node_types": [
+      "4ed28abe-720e-4568-8c58-cdda3d058ded",
+      "5de8b434-5cee-4c0a-98e0-ab190c01a5f9",
+      "CLIPTextEncode",
+      "Fast Groups Bypasser (rgthree)",
+      "LoadImage",
+      "ShowText|pysssss",
+      "e43f42d9-c28a-42a1-8093-1b353f8d4b8e",
+      "llama_cpp_instruct_adv"
+    ]
+  }
+}
