@@ -3,6 +3,7 @@ import u from "@/utils";
 import { z } from "zod";
 import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import logger from "@/logger";
 const router = express.Router();
 
 // 新增项目
@@ -23,9 +24,12 @@ export default router.post(
   }),
   async (req, res) => {
     const { projectType, name, intro, type, directorManual, artStyle, videoRatio, imageModel, videoModel, imageQuality, mode } = req.body;
+    const projectId = Date.now();
+
+    logger.genLog({ event: "project_create", projectId, projectType, name, type, artStyle, imageModel, videoModel, mode });
 
     await u.db("o_project").insert({
-      id: Date.now(),
+      id: projectId,
       projectType,
       name,
       intro,

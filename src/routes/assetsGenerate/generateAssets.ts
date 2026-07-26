@@ -4,6 +4,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { error, success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import logger from "@/logger";
 
 const router = express.Router();
 
@@ -73,13 +74,20 @@ const requestSchema = {
 
 export default router.post("/", validateFields(requestSchema), async (req, res) => {
   const { projectId, model, resolution, id, type, name, prompt, base64 } = req.body;
+  logger.genLog({ event: "asset_generate_request", projectId, model, resolution, assetsId: id, type, name });
 
   // 1. 查询项目 & 获取类型配置
   const project = await u.db("o_project").where("id", projectId).select("artStyle", "type", "intro").first();
-  if (!project) return res.status(500).send(success({ message: "项目为空" }));
+  if (!project) {
+    logger.genLog({ event: "asset_generate_no_project", projectId });
+    return res.status(500).send(success({ message: "项目为空" }));
+  }
 
   const cfg = assetTypeConfig[type as AssetType];
-  if (!cfg) return res.status(400).send(error("不支持的类型"));
+  if (!cfg) {
+    logger.genLog({ event: "asset_generate_invalid_type", projectId, type });
+    return res.status(400).send(error("不支持的类型"));
+  }
 
   // 2. 创建图片占位记录
   const [imageId] = await u.db("o_image").insert({

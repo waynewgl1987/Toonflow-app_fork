@@ -3,6 +3,7 @@ import u from "@/utils";
 import { z } from "zod";
 import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import { extractAssetsFromScripts } from "@/routes/script/extractAssets";
 const router = express.Router();
 
 export default router.post(
@@ -45,5 +46,15 @@ export default router.post(
       relatedAssets: scriptAssetsMap[i.id!] || [],
     }));
     res.status(200).send(success(returnData));
+
+    // 后台自动提取未处理的剧本资产
+    const pendingIds = data
+      .filter((s: any) => s.extractState == null || s.extractState === 2)
+      .map((s: any) => s.id!);
+    if (pendingIds.length) {
+      extractAssetsFromScripts(pendingIds, projectId).catch((err) => {
+        console.error("[getScrptApi] 自动提取资产失败:", err);
+      });
+    }
   },
 );
