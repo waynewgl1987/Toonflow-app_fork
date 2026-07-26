@@ -7,6 +7,7 @@ import useTools from "@/agents/scriptAgent/tools";
 import ResTool from "@/socket/resTool";
 import * as fs from "fs";
 import path from "path";
+import logger from "@/logger";
 
 export interface AgentContext {
   socket: Socket;
@@ -40,11 +41,15 @@ function buildMemPrompt(mem: Awaited<ReturnType<Memory["get"]>>): string {
 
 export async function runDecisionAI(ctx: AgentContext) {
   const { isolationKey, text, userMessageTime, abortSignal, resTool } = ctx;
+  const agentId = `sa_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  logger.genLog({ event: "scriptAgent_start", agentId, isolationKey, projectId: resTool.data.projectId, text: text.slice(0, 200) });
+
   const memory = new Memory("scriptAgent", isolationKey);
   await memory.add("user", text, { createTime: userMessageTime });
 
   const skill = path.join(u.getPath("skills"), "script_agent_decision.md");
   const prompt = await fs.promises.readFile(skill, "utf-8");
+  logger.genLog({ event: "scriptAgent_skill_loaded", agentId, skill });
 
   const mem = buildMemPrompt(await memory.get(text));
 
@@ -62,6 +67,18 @@ export async function runDecisionAI(ctx: AgentContext) {
     `章节数量：${novelData.length}章`,
   ].join("\n");
 
+  logger.genLog({ event: "scriptAgent_project_info", agentId, projectName: projectData?.name, projectType: projectData?.type });
+
+  resTool.socket.emit("content:add", {
+    messageId: ctx.msg.id,
+    content: {
+      type: "activity",
+      id: `progress_${Date.now()}`,
+      data: { activityType: "progress", content: "决策层开始分析项目信息..." },
+      status: "streaming",
+    },
+  });
+
   const { fullStream } = await u.Ai.Text("scriptAgent:decisionAgent", ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
     messages: [
       { role: "system", content: prompt },
@@ -72,7 +89,7 @@ export async function runDecisionAI(ctx: AgentContext) {
     tools: {
       ...memory.getTools(),
       ...useTools({ resTool: ctx.resTool, msg: ctx.msg }),
-      ...createSubAgent(ctx),
+      ...createSubAgent(ctx, agentId),
     },
     onFinish: async (completion) => {
       await memory.add("assistant:decision", removeAllXmlTags(completion.text));
@@ -88,7 +105,7 @@ export async function runDecisionAI(ctx: AgentContext) {
   });
 }
 
-function createSubAgent(parentCtx: AgentContext) {
+function createSubAgent(parentCtx: AgentContext, agentId: string) {
   const { resTool, abortSignal } = parentCtx;
   const memory = new Memory("scriptAgent", parentCtx.isolationKey);
 
@@ -110,6 +127,17 @@ function createSubAgent(parentCtx: AgentContext) {
     messages?: { role: "user" | "assistant" | "system"; content: string }[];
   }) {
     parentCtx.msg.complete();
+    // 推送进度
+    resTool.socket.emit("content:add", {
+      messageId: parentCtx.msg.id,
+      content: {
+        type: "activity",
+        id: `progress_${Date.now()}`,
+        data: { activityType: "progress", content: `正在执行: ${name}...` },
+        status: "streaming",
+      },
+    });
+
     const subMsg = resTool.newMessage("assistant", name);
 
     const { fullStream } = await u.Ai.Text(key, parentCtx.thinkConfig.think, parentCtx.thinkConfig.thinlLevel).stream({
@@ -142,6 +170,7 @@ function createSubAgent(parentCtx: AgentContext) {
     description: "运行执行subAgent来完成故事骨架相关任务",
     inputSchema: jsonSchema<{ prompt: string }>(promptInput),
     execute: async ({ prompt }) => {
+      logger.genLog({ event: "scriptAgent_progress", step: "story_skeleton", status: "start", agentId });
       const skill = path.join(u.getPath("skills"), "script_execution_skeleton.md");
       const systemPrompt = await fs.promises.readFile(skill, "utf-8");
 
@@ -162,6 +191,7 @@ function createSubAgent(parentCtx: AgentContext) {
     description: "运行执行subAgent来完成改编策略相关任务",
     inputSchema: jsonSchema<{ prompt: string }>(promptInput),
     execute: async ({ prompt }) => {
+      logger.genLog({ event: "scriptAgent_progress", step: "adaptation_strategy", status: "start", agentId });
       const skill = path.join(u.getPath("skills"), "script_execution_adaptation.md");
       const systemPrompt = await fs.promises.readFile(skill, "utf-8");
 
@@ -182,6 +212,7 @@ function createSubAgent(parentCtx: AgentContext) {
     description: "运行执行subAgent来完成剧本相关任务",
     inputSchema: jsonSchema<{ prompt: string }>(promptInput),
     execute: async ({ prompt }) => {
+      logger.genLog({ event: "scriptAgent_progress", step: "script_generation", status: "start", agentId });
       const skill = path.join(u.getPath("skills"), "script_execution_script.md");
       const systemPrompt = await fs.promises.readFile(skill, "utf-8");
 
@@ -243,6 +274,7 @@ async function consumeFullStream(
   let thinking: ReturnType<typeof msg.thinking> | null = null;
   let thinkTime = 0;
   let fullResponse = "";
+  const streamId = `str_${Date.now()}`;
 
   try {
     for await (const chunk of fullStream) {
@@ -267,17 +299,20 @@ async function consumeFullStream(
         text.append(chunk.text);
         fullResponse += chunk.text;
       } else if (chunk.type === "error") {
+        logger.genLog({ event: "stream_chunk_error", streamId, error: chunk.error });
         throw chunk.error;
       }
     }
     text.complete();
     msg.complete();
+    logger.genLog({ event: "stream_complete", streamId, length: fullResponse.length });
   } catch (err: any) {
     thinking?.complete();
     const errMsg = err?.message ?? String(err);
     text.append(errMsg);
     text.error();
     msg.error();
+    logger.genLog({ event: "stream_error", streamId, error: errMsg, stack: err?.stack });
     throw err;
   }
 

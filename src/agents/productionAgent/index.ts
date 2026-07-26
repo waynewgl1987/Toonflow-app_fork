@@ -8,6 +8,7 @@ import useTools from "@/agents/productionAgent/tools";
 import ResTool from "@/socket/resTool";
 import * as fs from "fs";
 import path from "path";
+import logger from "@/logger";
 
 export interface AgentContext {
   socket: Socket;
@@ -42,11 +43,15 @@ function buildMemPrompt(mem: Awaited<ReturnType<Memory["get"]>>): string {
 
 export async function runDecisionAI(ctx: AgentContext) {
   const { isolationKey, text, abortSignal } = ctx;
+  const agentId = `pa_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  logger.genLog({ event: "productionAgent_start", agentId, isolationKey, projectId: ctx.resTool.data.projectId, text: text.slice(0, 200) });
+
   const memory = new Memory("productionAgent", isolationKey);
   await memory.add("user", text);
 
   const skill = path.join(u.getPath("skills"), "production_agent_decision.md");
   const prompt = await fs.promises.readFile(skill, "utf-8");
+  logger.genLog({ event: "productionAgent_skill_loaded", agentId, skill });
 
   const projectInfo = await u.db("o_project").where("id", ctx.resTool.data.projectId).first();
   if (!projectInfo) throw new Error(`项目不存在，ID: ${ctx.resTool.data.projectId}`);
@@ -404,6 +409,7 @@ async function consumeFullStream(
   let thinking: ReturnType<typeof msg.thinking> | null = null;
   let thinkTime = 0;
   let fullResponse = "";
+  const streamId = `str_${Date.now()}`;
 
   try {
     for await (const chunk of fullStream) {
@@ -428,6 +434,7 @@ async function consumeFullStream(
         text.append(chunk.text);
         fullResponse += chunk.text;
       } else if (chunk.type === "error") {
+        logger.genLog({ event: "stream_chunk_error", streamId, error: chunk.error });
         throw chunk.error;
       } else if (chunk.type == "finish") {
         break;
@@ -435,12 +442,14 @@ async function consumeFullStream(
     }
     text.complete();
     msg.complete();
+    logger.genLog({ event: "stream_complete", streamId, length: fullResponse.length });
   } catch (err: any) {
     thinking?.complete();
     const errMsg = err?.message ?? String(err);
     text.append(errMsg);
     text.error();
     msg.error();
+    logger.genLog({ event: "stream_error", streamId, error: errMsg, stack: err?.stack });
     throw err;
   }
 
