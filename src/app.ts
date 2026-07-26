@@ -241,8 +241,50 @@ export default function startServe(randomPort: Boolean = false) {
   return server.listen(port);
 }
 
+/** 清理子进程（ComfyUI / Qwen3） */
+function cleanupChildProcesses(): void {
+  try {
+    const { execSync } = require("child_process");
+    // 检查 ComfyUI 端口 (8188) 并杀掉占用进程
+    const comfyPid = execSync(`netstat -ano | findstr ":8188 " | findstr LISTENING`).toString().match(/(\d+)\s*$/m);
+    if (comfyPid) {
+      execSync(`taskkill /f /pid ${comfyPid[1]} >nul 2>&1`);
+      console.log("[清理] ComfyUI 进程已停止");
+    }
+  } catch {}
+  try {
+    const { execSync } = require("child_process");
+    // 检查 Qwen3 端口 (8787) 并杀掉占用进程
+    const qwenPid = execSync(`netstat -ano | findstr ":8787 " | findstr LISTENING`).toString().match(/(\d+)\s*$/m);
+    if (qwenPid) {
+      execSync(`taskkill /f /pid ${qwenPid[1]} >nul 2>&1`);
+      console.log("[清理] Qwen3 进程已停止");
+    }
+  } catch {}
+  try {
+    // 额外清理残余的 llama-server.exe
+    require("child_process").execSync(`taskkill /f /im llama-server.exe >nul 2>&1`);
+  } catch {}
+}
+
+// 进程退出时清理子进程
+process.on("exit", () => {
+  cleanupChildProcesses();
+});
+process.on("SIGINT", () => {
+  console.log("\n[停止] 收到中断信号，清理服务...");
+  cleanupChildProcesses();
+  process.exit(0);
+});
+process.on("SIGTERM", () => {
+  console.log("[停止] 收到终止信号，清理服务...");
+  cleanupChildProcesses();
+  process.exit(0);
+});
+
 // 支持await关闭
 export function closeServe(): Promise<void> {
+  cleanupChildProcesses();
   return new Promise((resolve, reject) => {
     if (server) {
       server.close((err?: Error) => {

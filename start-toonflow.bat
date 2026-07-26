@@ -19,6 +19,15 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":10588 " ^| findstr LISTENIN
     taskkill /f /pid %%a >nul 2>&1
 )
 
+:: Kill old ComfyUI process on port 8188 (if any) — 确保 ComfyUI 被 Toonflow 统一管理
+echo [INFO] Checking port 8188 (ComfyUI)...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8188 " ^| findstr LISTENING') do (
+    echo [INFO] Found old ComfyUI process on port 8188 PID=%%a, stopping...
+    taskkill /f /pid %%a >nul 2>&1
+)
+:: Also kill any stray pythonw.exe that might be ComfyUI-related
+taskkill /f /im pythonw.exe >nul 2>&1
+
 echo ============================================
 echo   Toonflow AI - One-Click Start
 echo ============================================

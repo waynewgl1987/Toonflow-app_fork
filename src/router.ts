@@ -18,6 +18,7 @@ import route14 from "./routes/assets/getImage";
 import route15 from "./routes/assets/getMaterialData";
 import route16 from "./routes/assets/pollingImageAssets";
 import route17 from "./routes/assets/pollingPromptAssets";
+import route16b from "./routes/assets/generationProgress";
 import route18 from "./routes/assets/saveAssets";
 import route19 from "./routes/assets/updateAssets";
 import route20 from "./routes/assets/updateAudioAssets";
@@ -191,6 +192,7 @@ export default async (app: Express) => {
   app.use("/api/assets/getMaterialData", route15);
   app.use("/api/assets/pollingImageAssets", route16);
   app.use("/api/assets/pollingPromptAssets", route17);
+  app.use("/api/assets/generationProgress", route16b);
   app.use("/api/assets/saveAssets", route18);
   app.use("/api/assets/updateAssets", route19);
   app.use("/api/assets/updateAudioAssets", route20);

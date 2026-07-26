@@ -3,6 +3,7 @@ import { devToolsMiddleware } from "@ai-sdk/devtools";
 import axios from "axios";
 import { transform } from "sucrase";
 import * as fs from "fs";
+import * as path from "path";
 import u from "@/utils";
 import logger from "@/logger";
 import { ensureService } from "@/utils/serviceManager";
@@ -138,8 +139,29 @@ async function getVendorTemplateFn(fnName: FnName, modelName: `${string}:${strin
     for (const key of Object.keys(inputValues)) {
       if (typeof inputValues[key] === "string" && inputValues[key].startsWith("file://")) {
         const filePath = inputValues[key].slice(7);
-        if (fs.existsSync(filePath)) {
-          inputValues[key] = fs.readFileSync(filePath, "utf-8");
+        if (!fs.existsSync(filePath)) continue;
+        inputValues[key] = fs.readFileSync(filePath, "utf-8");
+      }
+    }
+    // 后备方案：如果数据库未配置工作流，尝试读取默认路径的 API 格式文件
+    const defaultWorkflows: Record<string, string> = {
+      imageWorkflowJson: path.join(process.cwd(), "ComfyUI", "workflows", "image_z_image_turbo.json"),
+      videoWorkflowJson: path.join(process.cwd(), "ComfyUI", "workflows", "LTX2.3_frameVideo.json"),
+    };
+    for (const [key, defaultPath] of Object.entries(defaultWorkflows)) {
+      if (!inputValues[key] || inputValues[key] === "{}" || (typeof inputValues[key] === "string" && inputValues[key].startsWith("file://"))) {
+        if (fs.existsSync(defaultPath)) {
+          const content = fs.readFileSync(defaultPath, "utf-8");
+          try {
+            const parsed = JSON.parse(content);
+            if (parsed && typeof parsed === "object" && "id" in parsed && "nodes" in parsed) {
+              console.warn(`[ComfyUI] ${key} 默认文件 ${defaultPath} 是 UI 格式，请用 "Save (API Format)" 重新导出`);
+              continue;
+            }
+            if (Object.keys(parsed).length > 0) {
+              inputValues[key] = content;
+            }
+          } catch {}
         }
       }
     }
@@ -297,27 +319,57 @@ class AiImage {
     const exec = async (mn: `${string}:${string}`) => {
       const fn = await getVendorTemplateFn("imageRequest", mn);
       await referenceList2imageBase642(mn.split(/:(.+)/)[0], input);
+      logger.genLog({ event: "image_vendor_call", recordId: this.recordId, key: this.key, phase: "调用供应商 imageRequest" });
       this.result = await fn(input);
-      if (this.result.startsWith("http")) this.result = await urlToBase64(this.result);
+      logger.genLog({ event: "image_vendor_result", recordId: this.recordId, key: this.key, phase: "供应商返回结果", resultType: typeof this.result, startsWithHttp: this.result.startsWith("http"), length: this.result.length });
+      if (this.result.startsWith("http")) {
+        logger.genLog({ event: "image_download_start", recordId: this.recordId, key: this.key, phase: "开始从 URL 下载图片转 base64" });
+        this.result = await urlToBase64(this.result);
+        logger.genLog({ event: "image_download_done", recordId: this.recordId, key: this.key, phase: "下载完成", base64Length: this.result.length });
+      }
+      // 更新进度: 下载完成，准备保存
+      if (taskRecord) {
+        try { updateGeneration(taskRecord.projectId, { status: "downloading" }); } catch {}
+      }
       return this;
     };
     try {
       if (taskRecord) {
         await withTaskRecord(this.key, taskRecord.taskClass, taskRecord.describe, taskRecord.relatedObjects, taskRecord.projectId, exec);
         logger.genLog({ event: "image_run_success", recordId: this.recordId, key: this.key });
+        // 生成成功，重置 ComfyUI 失败计数
+        try { const { resetComfyFailure } = await import("@/utils/serviceManager"); resetComfyFailure(); } catch {}
         return this;
       }
       await exec(modelName);
       logger.genLog({ event: "image_run_success", recordId: this.recordId, key: this.key });
+      try { const { resetComfyFailure } = await import("@/utils/serviceManager"); resetComfyFailure(); } catch {}
       return this;
     } catch (e) {
       logger.genLog({ event: "image_run_error", recordId: this.recordId, key: this.key, error: (e as Error).message, stack: (e as Error).stack });
+      if ((e as Error).message?.includes("输出中没有找到媒体文件")) {
+        try {
+          const { recordComfyFailure, resetComfyFailure } = await import("@/utils/serviceManager");
+          if (recordComfyFailure()) {
+            console.log("[ComfyUI] 连续生成失败，将在下次调用时重启 ComfyUI");
+          }
+        } catch {}
+      }
       throw e;
     }
   }
+
   async save(path: string) {
-    logger.genLog({ event: "image_save", recordId: this.recordId, path });
-    await u.oss.writeFile(path, this.result);
+    logger.genLog({ event: "image_save_start", recordId: this.recordId, path, base64Length: this.result?.length || 0 });
+    try {
+      await u.oss.writeFile(path, this.result);
+      // 验证文件是否写入成功
+      const exists = await u.oss.fileExists(path);
+      logger.genLog({ event: "image_save_result", recordId: this.recordId, path, exists });
+    } catch (e) {
+      logger.genLog({ event: "image_save_error", recordId: this.recordId, path, error: (e as Error).message });
+      throw e;
+    }
     return this;
   }
 }

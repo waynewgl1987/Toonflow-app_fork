@@ -26,12 +26,14 @@ export default router.post(
 
       const reqFn = await u.Ai.Image(`${id}:${modelName}`).run({
         prompt: prompt,
-        referenceList: imageBase64 ? [{ type: "image", base64: imageBase64 }] : [], //输入的图片提示词
-        size: "1K", // 图片尺寸
+        referenceList: imageBase64 ? [{ type: "image", base64: imageBase64 }] : [],
+        size: "1K",
         aspectRatio: "16:9",
       });
       await reqFn.save("testImage.jpg");
       const resultUrl = await u.oss.getFileUrl("testImage.jpg");
+      const resultPath = u.getPath("oss", "testImage.jpg");
+      console.log(`[ImageTest] 保存路径: ${resultPath}, URL: ${resultUrl}, 结果长度: ${(reqFn as any).result?.length || 0} bytes`);
       res.status(200).send(success(resultUrl));
     } catch (err) {
       console.error(err);

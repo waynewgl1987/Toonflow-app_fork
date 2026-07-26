@@ -5,6 +5,8 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { error, success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import logger from "@/logger";
+import { registerGeneration, updateGeneration, removeGeneration } from "@/utils/generationProgress";
 
 const router = express.Router();
 
@@ -112,7 +114,9 @@ export default router.post("/", validateFields(requestSchema), async (req, res) 
       const describe = `生成${cfg.label}图，名称：${item.name}，提示词：${item.prompt}`;
       const relatedObjects = { id: item.id, projectId, type: cfg.label };
       try {
+        registerGeneration(imageId);
         const aiImage = u.Ai.Image(model);
+        updateGeneration(imageId, { status: "running" });
         await aiImage.run(
           {
             prompt: userPrompt,
@@ -127,12 +131,20 @@ export default router.post("/", validateFields(requestSchema), async (req, res) 
             relatedObjects: JSON.stringify(relatedObjects),
           },
         );
-        aiImage.save(imagePath);
+        updateGeneration(imageId, { status: "saving" });
+        await aiImage.save(imagePath);
+        logger.genLog({ event: "batch_gen_save_ok", imageId, path: imagePath });
 
         const imageData = await u.db("o_image").where("id", imageId).select("*").first();
-        if (!imageData) return res.status(500).send("资产已被删除");
-        if (!imageData) return;
-        if (imageData.state === "生成失败") return;
+        if (!imageData) {
+          console.error(`[生成] imageId=${imageId} 已被删除`);
+          updateGeneration(imageId, { status: "error", error: "image deleted" });
+          return;
+        }
+        if (imageData.state === "生成失败") {
+          updateGeneration(imageId, { status: "error", error: "state is 生成失败" });
+          return;
+        }
         await u
           .db("o_image")
           .where("id", imageId)
@@ -143,19 +155,25 @@ export default router.post("/", validateFields(requestSchema), async (req, res) 
             model: model.split(/:(.+)/)[1],
             resolution,
           });
+        updateGeneration(imageId, { status: "done" });
 
         await u.db("o_assets").where("id", item.id).update({ imageId });
       } catch (e: any) {
+        const errMsg = u.error(e).message;
+        logger.genLog({ event: "batch_gen_error", imageId, error: errMsg });
         await u
           .db("o_image")
           .where("id", imageId)
-          .update({ state: "生成失败", errorReason: u.error(e).message });
+          .update({ state: "生成失败", errorReason: errMsg });
+        updateGeneration(imageId, { status: "error", error: errMsg });
       }
     }),
   );
 
   // 后台执行，不等待结果
-  Promise.all(tasks).catch(() => {});
+  Promise.all(tasks).catch((err) => {
+    console.error("[批量生成] 后台任务失败:", err instanceof Error ? err.message : err);
+  });
 
   return res.status(200).send(success({ total: items.length }));
 });

@@ -31,11 +31,21 @@ interface PollResult { completed: boolean; data?: string; error?: string }
 
 // ============================================================
 // 内嵌工作流（JSON 模板字符串，运行时替换 __PROMPT__）
+// 优先使用供应商设置中的自定义工作流配置
 // ============================================================
 
-const IMAGE_WORKFLOW_JSON = `{"prompt":{"772":{"class_type":"easy int","inputs":{"input_0":1451}},"770":{"class_type":"LoadImage","inputs":{"image":"klein_00001_ (1).png","upload":"image"}},"765":{"class_type":"SaveImage","inputs":{"filename_prefix":"flux2/klein","images":["1123",0]}},"998":{"class_type":"SaveImage","inputs":{"filename_prefix":"flux2/文生图","images":["1110",1]}},"1110":{"class_type":"b666cb78-77e0-4437-b9bd-8ad689bb3546","inputs":{"positive":["550",0],"latent_image":["853",0]}},"550":{"class_type":"CLIPTextEncode","inputs":{"text":"__PROMPT__","clip":["1110",0]}},"853":{"class_type":"EmptyFlux2LatentImage","inputs":{"input_0":864,"input_1":1536,"input_2":1}},"1123":{"class_type":"7888059c-24a7-49c8-801c-e6e818eeb4c6","inputs":{"conditioning":["773",0],"image":["770",0],"generation_width":["772",0]}},"773":{"class_type":"CLIPTextEncode","inputs":{"text":"__PROMPT__","clip":["1123",1]}}}}`;
+// 文生图工作流：默认空（用户必须配置）
+// 使用方式：
+//   1. ComfyUI 菜单 → Save (API Format) 导出 JSON
+//   2. 将 CLIPTextEncode 节点的 text 字段改为 "__PROMPT__"
+//   3. 粘贴到设置中心 "文生图工作流 JSON" 字段
+// 或使用 file:// 路径：
+//   file://E:/AI/ComfyAI_Video-ShortVideo/工作流/文生图_API.json
+const IMAGE_WORKFLOW_JSON = "";
 
-const VIDEO_WORKFLOW_JSON = `{"prompt":{"831":{"class_type":"deaa09e1-d244-4782-9d94-30460280ce54","inputs":{"image":["838",0],"positive":["832",0]}},"838":{"class_type":"LoadImage","inputs":{"image":"refer.png","upload":"image"}},"832":{"class_type":"CLIPTextEncode","inputs":{"text":"__PROMPT__","clip":["831",0]}},"833":{"class_type":"f0b5842f-ef7e-4deb-866c-6c6535eb8320","inputs":{"image":["838",0],"positive":["834",0]}},"834":{"class_type":"CLIPTextEncode","inputs":{"text":"__PROMPT__","clip":["833",0]}}}}`;
+// 文生视频工作流：使用 LTX2.3 单图视频工作流
+// 用户可在设置中通过 videoWorkflowJson 覆盖
+const VIDEO_WORKFLOW_JSON = "";
 
 // ============================================================
 // 全局声明（从 VM 沙箱注入）
@@ -56,29 +66,26 @@ const vendor: VendorConfig = {
   description: `本地 ComfyUI，支持图像和视频生成。
 
 **使用前准备：**
-1. 启动 ComfyUI
-2. 将工作流中需要用到的参考图片放入 ComfyUI 的 \`input/\` 目录
-3. 工作流中 CLIPTextEncode 节点 text 字段包含 \`__PROMPT__\` 占位符
+1. 确保 ComfyUI 已启动并可访问
+2. 工作流 JSON 必须使用 ComfyUI "Save (API Format)" 导出
+3. 导出的 JSON 中 CLIPTextEncode 节点的 text 字段必须改为 \`__PROMPT__\`
 
-**工作流：**
-- 文生图：内建 Flux 工作流
-- 文生视频：默认使用 LTX2.3 单图视频工作流
+**已配置的工作流文件（均含 \`__PROMPT__\` 占位符）：**
 
-**自定义工作流：**
-在下方字段填写 JSON 字符串，或使用 \`file://\` 开头指定文件路径，例如：
-\`file://E:/AI/ComfyAI_Video-ShortVideo/工作流/LTX2.3/LTX2.3  单图视频.json\`
+文生图: \`file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_Image.json\`
+文生视频: \`file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_frameVideo.json\`
 
-**注意：** ComfyUI 不支持文本请求，Agent 配置中文本模型务必指向 openai（Qwen3）。`,
+**注意：** ComfyUI 不支持文本请求，Agent 配置中文本模型务必指向 openai（Qwen3）`,
   icon: "",
   inputs: [
     { key: "baseUrl", label: "ComfyUI 地址", type: "url", required: true, placeholder: "http://localhost:8188" },
-    { key: "imageWorkflowJson", label: "文生图工作流 JSON（覆盖内建）", type: "text", required: false, placeholder: "留空使用内建工作流" },
-    { key: "videoWorkflowJson", label: "文生视频工作流 JSON（覆盖内建）", type: "text", required: false, placeholder: "留空使用内建工作流" },
+    { key: "imageWorkflowJson", label: "文生图工作流 JSON", type: "text", required: false, placeholder: "必填：粘贴 Save (API Format) 的 JSON 或 file:// 路径" },
+    { key: "videoWorkflowJson", label: "文生视频工作流 JSON", type: "text", required: false, placeholder: "必填：粘贴 Save (API Format) 的 JSON 或 file:// 路径" },
   ],
   inputValues: {
     baseUrl: "http://localhost:8188",
-    imageWorkflowJson: "",
-    videoWorkflowJson: "",
+    imageWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/image_z_image_turbo.json",
+    videoWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_frameVideo.json",
   },
   models: [
     {
@@ -133,21 +140,145 @@ function prepareWorkflow(rawJson: string, prompt: string): object {
 // 如需使用参考图，请预先将图片放入 ComfyUI 的 input/ 目录，
 // 并在 workflow 的 LoadImage 节点中引用对应文件名。
 
+/** 等待指定毫秒（vm2 沙箱中 setTimeout 不可靠，使用 Date 轮询） */
+function sleep(ms: number): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    // busy-wait (vm2 沙箱中 Promise+setTimeout 不可靠)
+  }
+  return Promise.resolve();
+}
+
+/**
+ * 标准化节点 ID：将非标准节点 ID（如 "57:30"）转为简单整数 ID（如 "1"）
+ * ComfyUI v0.18+ 对含冒号的节点 ID 支持不稳定，此函数确保所有 ID 合规
+ */
+function normalizeNodeIds(workflow: object): object {
+  const oldIds = Object.keys(workflow);
+
+  // 检查是否需要标准化（只要有一个 ID 不是纯数字就需要）
+  const needsNormalization = oldIds.some(id => !/^\d+$/.test(id));
+  if (!needsNormalization) return workflow;
+
+  logger(`[ComfyUI] 标准化节点 ID: ${oldIds.length} 个节点 (例如 ${oldIds[0]} → 1)`);
+
+  // 生成旧 ID → 新 ID 的映射
+  const idMap: Record<string, string> = {};
+  let nextId = 1;
+  for (const oldId of oldIds) {
+    idMap[oldId] = String(nextId++);
+  }
+
+  /** 递归重映射工作流中所有节点引用 (["57:8", 0] → ["3", 0]) */
+  function remap(obj: any): any {
+    if (Array.isArray(obj)) {
+      // ComfyUI 节点引用格式: [nodeId, outputIndex]
+      if (obj.length === 2 && typeof obj[0] === "string" && idMap[obj[0]] !== undefined) {
+        return [idMap[obj[0]], obj[1]];
+      }
+      return obj.map(remap);
+    }
+    if (obj && typeof obj === "object") {
+      const result: any = {};
+      for (const [k, v] of Object.entries(obj)) {
+        result[k] = remap(v);
+      }
+      return result;
+    }
+    return obj;
+  }
+
+  // 构建标准化后的工作流
+  const normalized: any = {};
+  for (const [oldId, nodeData] of Object.entries(workflow)) {
+    normalized[idMap[oldId]] = remap(nodeData);
+  }
+
+  logger(`[ComfyUI] 标准化完成: ${Object.keys(normalized).length} 个节点`);
+  return normalized;
+}
+
+/** 从 ComfyUI 输出节点中提取第一个媒体文件 URL */
+function findFirstMedia(outputs: Record<string, any>, baseUrl: string): string | null {
+  for (const nodeId of Object.keys(outputs)) {
+    const output = outputs[nodeId];
+    if (!output || typeof output !== "object") continue;
+
+    // ComfyUI 标准输出类型: images, gifs, video, files
+    const mediaKeys = ["images", "gifs", "video", "files"];
+    for (const key of mediaKeys) {
+      const items = output[key] || [];
+      if (items.length > 0) {
+        const m = items[0];
+        const filename = m.filename || m.name;
+        if (filename) {
+          return `${baseUrl}/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(m.subfolder || "")}&type=${encodeURIComponent(m.type || "output")}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 /** 提交工作流到 ComfyUI 并轮询，返回结果 URL（host 负责转 base64） */
-async function submitAndWait(workflow: object, baseUrl: string): Promise<string> {
+async function submitAndWait(workflow: object, baseUrl: string, retries = 2): Promise<string> {
+  // 标准化节点 ID（将 "57:30" 转为简单整数，规避 ComfyUI v0.18+ 的兼容问题）
+  workflow = normalizeNodeIds(workflow);
+
   logger(`[ComfyUI] 提交生成任务...`);
+
+  // 检查工作流结构
+  const nodeIds = Object.keys(workflow);
+  const classTypes = nodeIds.map(id => workflow[id]?.class_type || "???");
+  logger(`[ComfyUI] 节点数: ${nodeIds.length}, 节点类型: [${classTypes.slice(0, 5).join(", ")}${classTypes.length > 5 ? "..." : ""}]`);
+
+  // 验证工作流节点 ID 和值类型
+  for (const id of nodeIds) {
+    const val = workflow[id];
+    if (typeof val !== "object" || val === null) {
+      throw new Error(
+        `ComfyUI 工作流错误: 节点 "${id}" 的值类型为 ${typeof val}，应为对象。\n` +
+        `这通常是因为工作流使用了错误的导出格式。\n` +
+        `请确保在 ComfyUI 中使用 "Save (API Format)" 导出，而不是普通保存。\n` +
+        `如果节点 ID 包含冒号 (如 "${id}")，说明是从 ComfyUI-Easy-Use 等插件导出的非标准格式，请使用标准导出方式。`
+      );
+    }
+    // 检查节点 ID 是否包含冒号（非标准格式）
+    if (id.includes(":")) {
+      logger(`[ComfyUI] 警告: 节点 ID "${id}" 包含冒号，这可能是非标准 API 格式，ComfyUI v0.18+ 可能拒绝此工作流`);
+    }
+  }
+
+  const body = JSON.stringify({ prompt: workflow });
+  logger(`[ComfyUI] 请求体大小: ${body.length} bytes`);
+
   const submitRes = await fetch(`${baseUrl}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: workflow }),
+    body,
   });
   if (!submitRes.ok) {
     const errText = await submitRes.text();
-    throw new Error(`ComfyUI 提交失败 (${submitRes.status}): ${errText}`);
+    const truncated = errText.length > 500 ? errText.substring(0, 500) + "..." : errText;
+
+    // 增强错误提示：检测常见问题
+    let hint = "";
+    if (errText.includes("validate_prompt") || errText.includes("node_data.get")) {
+      hint = "\n\n可能原因：工作流格式不被当前 ComfyUI 版本兼容。请尝试：\n" +
+        "1. 在 ComfyUI 中打开工作流\n" +
+        "2. 菜单 → Save (API Format) 重新导出\n" +
+        "3. 将新导出的 JSON 配置到 Toonflow 设置 → 模型服务 → ComfyUI";
+    } else if (errText.includes("out of memory") || errText.includes("CUDA")) {
+      hint = "\n\n可能原因：显存不足，请关闭其他 GPU 应用后重试";
+    }
+
+    throw new Error(`ComfyUI 提交失败 (${submitRes.status}): ${truncated}${hint}`);
   }
   const submitData = await submitRes.json();
   const promptId = submitData.prompt_id;
   logger(`[ComfyUI] 任务 ID: ${promptId}`);
+
+  const startTime = Date.now();
 
   const pollResult = await pollTask(async () => {
     const histRes = await fetch(`${baseUrl}/history/${promptId}`);
@@ -156,18 +287,28 @@ async function submitAndWait(workflow: object, baseUrl: string): Promise<string>
     const entry = history[promptId];
     if (!entry) return { completed: false };
 
+    // 检测 0 秒完成（显存不足/队列异常），重试
     if (entry.status?.completed) {
+      const execTime = entry.status?.execution_time;
+      const elapsed = execTime ?? (Date.now() - startTime) / 1000;
       const outputs = entry.outputs || {};
-      for (const nodeId of Object.keys(outputs)) {
-        const output = outputs[nodeId];
-        const images = output?.images || [];
-        if (images.length > 0) {
-          const m = images[0];
-          const fileUrl = `${baseUrl}/view?filename=${encodeURIComponent(m.filename)}&subfolder=${encodeURIComponent(m.subfolder || "")}&type=${encodeURIComponent(m.type || "output")}`;
-          logger(`[ComfyUI] 生成完成: ${m.filename}`);
-          return { completed: true, data: fileUrl };
-        }
+      const outputCount = Object.keys(outputs).length;
+
+      logger(`[ComfyUI] 完成检查: exec_time=${execTime}s, elapsed=${elapsed.toFixed(2)}s, outputs=${outputCount}, retries=${retries}`);
+
+      // 检查所有类型的媒体输出 (images, gifs, video, files)
+      const fileUrl = findFirstMedia(outputs, baseUrl);
+      if (fileUrl) {
+        logger(`[ComfyUI] 生成完成 (${elapsed.toFixed(1)}s)`);
+        return { completed: true, data: fileUrl };
       }
+
+      // 无输出 + 执行时间极短（<3s）→ 可能是队列异常，重试
+      if (outputCount === 0 && elapsed < 3.0 && retries > 0) {
+        logger(`[ComfyUI] 检测到异常快速完成 (${elapsed.toFixed(2)}s, 无输出)，重试中...`);
+        return { completed: true, error: "__RETRY__" };
+      }
+
       return { completed: true, error: "输出中没有找到媒体文件" };
     }
     if (entry.status?.status_str === "error") {
@@ -176,7 +317,18 @@ async function submitAndWait(workflow: object, baseUrl: string): Promise<string>
     return { completed: false };
   }, 2000, 600000);
 
-  if (pollResult.error) throw new Error(`ComfyUI 生成失败: ${pollResult.error}`);
+  // 0 秒完成重试逻辑（使用忙等待替代 setTimeout）
+  if (pollResult.error === "__RETRY__" && retries > 0) {
+    logger(`[ComfyUI] 重试第 ${3 - retries + 1} 次...`);
+    await sleep(3000);
+    return submitAndWait(workflow, baseUrl, retries - 1);
+  }
+
+  if (pollResult.error) {
+    // 尝试中断 ComfyUI 当前任务（如果有卡住的任务）
+    try { await fetch(`${baseUrl}/interrupt`, { method: "POST" }); } catch {}
+    throw new Error(`ComfyUI 生成失败: ${pollResult.error}`);
+  }
   if (!pollResult.data) throw new Error("ComfyUI 未返回结果");
   return pollResult.data; // 返回 URL，host 的 AiImage/AiVideo 会自动转 base64
 }
@@ -194,10 +346,20 @@ const textRequest = (model: TextModel, think: boolean, thinkLevel: 0 | 1 | 2 | 3
 const imageRequest = async (config: ImageConfig, model: ImageModel): Promise<string> => {
   const baseUrl = vendor.inputValues.baseUrl;
   const customJson = vendor.inputValues.imageWorkflowJson || "";
-  const rawJson = customJson || IMAGE_WORKFLOW_JSON;
 
-  logger(`[ComfyUI Image] 准备文生图工作流`);
-  const workflow = prepareWorkflow(rawJson, config.prompt);
+  if (!customJson) {
+    throw new Error(
+      `ComfyUI 文生图工作流未配置。请按以下步骤操作：\n` +
+      `1. 打开 ComfyUI Web UI (${baseUrl})\n` +
+      `2. 加载或创建一个可用的文生图工作流\n` +
+      `3. 菜单 → Save (API Format) 导出为 JSON\n` +
+      `4. 将 CLIPTextEncode 节点的 text 字段改为 __PROMPT__\n` +
+      `5. 在 Toonflow 设置 → 模型服务 → ComfyUI → "文生图工作流 JSON" 中粘贴该 JSON`
+    );
+  }
+
+  logger(`[ComfyUI Image] 使用自定义工作流`);
+  const workflow = prepareWorkflow(customJson, config.prompt);
   return await submitAndWait(workflow, baseUrl);
 };
 
@@ -207,15 +369,28 @@ const imageRequest = async (config: ImageConfig, model: ImageModel): Promise<str
 const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<string> => {
   const baseUrl = vendor.inputValues.baseUrl;
   const customJson = vendor.inputValues.videoWorkflowJson || "";
-  const rawJson = customJson || VIDEO_WORKFLOW_JSON;
+
+  if (!customJson) {
+    // 尝试默认路径的 LTX2.3 工作流（file:// 机制在 host 侧处理）
+    throw new Error(
+      `ComfyUI 文生视频工作流未配置。请按以下步骤操作：\n` +
+      `1. 打开 ComfyUI Web UI (${baseUrl})\n` +
+      `2. 加载或创建一个可用的视频工作流（如 LTX2.3 单图视频）\n` +
+      `3. 菜单 → Save (API Format) 导出为 JSON\n` +
+      `4. 将 CLIPTextEncode 节点的 text 字段改为 __PROMPT__\n` +
+      `5. 在 Toonflow 设置 → 模型服务 → ComfyUI → "文生视频工作流 JSON" 中粘贴该 JSON\n` +
+      `   或使用 file:// 路径: file://E:/AI/ComfyAI_Video-ShortVideo/工作流/LTX2.3/LTX2.3单图视频.json`
+    );
+  }
+
+  logger(`[ComfyUI Video] 使用自定义工作流`);
 
   // 将 duration/resolution 信息拼入 prompt
   let enhancedPrompt = config.prompt;
   if (config.duration) enhancedPrompt += ` Duration: ${config.duration}s.`;
   if (config.resolution) enhancedPrompt += ` Resolution: ${config.resolution}.`;
 
-  logger(`[ComfyUI Video] 准备文生视频工作流`);
-  const workflow = prepareWorkflow(rawJson, enhancedPrompt);
+  const workflow = prepareWorkflow(customJson, enhancedPrompt);
   return await submitAndWait(workflow, baseUrl);
 };
 

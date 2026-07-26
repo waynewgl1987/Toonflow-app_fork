@@ -51,10 +51,14 @@ class OSS {
     await this.ensureInit();
     const safePath = normalizeUserPath(userRelPath);
     // URL 始终使用 /，所以这里需要将系统分隔符转回 /
-    let url = `/${prefix}/`;
-    if (process.env.ossURL && process.env.ossURL !== "") url = process.env.ossURL + `/${prefix}/`;
-    if (process.env.NODE_ENV == "dev") url = `http://localhost:10588/${prefix}/`;
-    if (isEletron()) url = `http://localhost:${process.env.PORT}/${prefix}/`;
+    // 构造 URL，确保不出现双斜杠（ossURL 可能有尾斜杠）
+    let baseUrl = `/${prefix}`;
+    if (process.env.ossURL && process.env.ossURL !== "") {
+      baseUrl = process.env.ossURL.replace(/\/+$/, "") + `/${prefix}`;
+    }
+    if (process.env.NODE_ENV == "dev") baseUrl = `http://localhost:10588/${prefix}`;
+    if (isEletron()) baseUrl = `http://localhost:${process.env.PORT}/${prefix}`;
+    let url = baseUrl + `/`;
     return `${url}${safePath.split(path.sep).join("/")}`;
   }
 

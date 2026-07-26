@@ -23,10 +23,11 @@ const CONFIG = {
   comfyui: {
     name: "ComfyUI",
     rootDir: "E:\\AI\\ComfyAI_Video-ShortVideo\\ComfyUI纯包\\ComfyUI",
-    pythonExe: "python\\python.exe",
+    // pythonw.exe 是无窗口版本，不产生控制台窗口
+    pythonExe: "python\\pythonw.exe",
     mainScript: "ComfyUI\\main.py",
     port: 8188,
-    processName: "python.exe",
+    processName: "pythonw.exe",
   },
 };
 
@@ -206,22 +207,79 @@ router.post("/start-comfyui", async (_req: Request, res: Response) => {
       });
     }
 
+    // 日志输出到项目 logs 目录
+    const logDir = path.join(process.cwd(), "data", "logs");
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    const comfyLogPath = path.join(logDir, "comfyui_console.log");
+    const logFd = fs.openSync(comfyLogPath, "a");
+    fs.writeSync(logFd, `\n--- ComfyUI start at ${new Date().toISOString()} ---\n`);
+
+    console.log(`[ComfyUI] 启动中: ${pythonPath} ${scriptPath} --listen --port ${CONFIG.comfyui.port}`);
+    console.log(`[ComfyUI] 日志文件: ${comfyLogPath}`);
+
     // 启动 ComfyUI: python\python.exe ComfyUI\main.py --listen --port 8188
     const proc = spawn(pythonPath, [scriptPath, "--listen", "--port", String(CONFIG.comfyui.port)], {
       cwd: rootDir,
       detached: true,
-      stdio: "ignore",
-      windowsHide: false,
+      stdio: ["ignore", logFd, logFd],
+      windowsHide: true,
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
     });
     proc.unref();
     runningProcesses.comfyui = proc;
 
+    // 监听进程事件 (stdio已重定向到文件, 这里只记录进程生命周期)
+    proc.on("error", (err) => {
+      const msg = `[ComfyUI] 进程错误: ${err.message}`;
+      console.error(msg);
+      try { fs.writeSync(logFd, `\n${msg}\n`); } catch {}
+    });
+    proc.on("exit", (code, signal) => {
+      const msg = `[ComfyUI] 进程退出 code=${code} signal=${signal}`;
+      console.log(msg);
+      try {
+        fs.writeSync(logFd, `\n--- ${msg} at ${new Date().toISOString()} ---\n`);
+        fs.closeSync(logFd);
+      } catch {}
+    });
+
     res.send({
       success: true,
-      message: "ComfyUI 已启动，等待初始化...",
+      message: `ComfyUI 已启动，日志: ${comfyLogPath}`,
     });
   } catch (e: any) {
+    console.error(`[ComfyUI] 启动失败:`, e);
     res.status(500).send({ success: false, message: e.message });
+  }
+});
+
+/** 扫描可用工作流文件（用于供应商配置中的文件选择） */
+router.get("/workflows", async (_req: Request, res: Response) => {
+  try {
+    const searchDirs = [
+      path.join(process.cwd(), "ComfyUI", "workflows"),
+      "E:\\AI\\ComfyAI_Video-ShortVideo\\工作流",
+      "E:\\AI\\ComfyAI_Video-ShortVideo\\工作流\\LTX2.3",
+      "E:\\AI\\ComfyAI_Video-ShortVideo\\工作流\\Wan2.2",
+      "E:\\AI\\ComfyAI_Video-ShortVideo\\工作流\\原始工作流",
+    ];
+    const workflows: { path: string; name: string; size: number }[] = [];
+    for (const dir of searchDirs) {
+      if (!fs.existsSync(dir)) continue;
+      const files = fs.readdirSync(dir).filter(f => f.endsWith(".json"));
+      for (const file of files) {
+        const fullPath = path.join(dir, file);
+        const stat = fs.statSync(fullPath);
+        workflows.push({
+          path: fullPath,
+          name: file,
+          size: stat.size,
+        });
+      }
+    }
+    res.json({ success: true, data: workflows });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 
