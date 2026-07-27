@@ -85,10 +85,52 @@ h1{font-size:20px;font-weight:600;margin-bottom:2px}
   <div style="text-align:center;color:#666;padding:20px;flex:1">加载中...</div>
 </div>
 
-<div class="actions">
+<div class="actions" style="margin-bottom:12px">
   <button class="btn btn-out" onclick="refresh()">刷新状态</button>
   <button class="btn btn-dgr" onclick="stopAll()">停止所有</button>
 </div>
+
+<!-- Settings -->
+<div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:12px;padding:12px 16px;margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600">视频生产页固定云端+ComfyUI</span>
+    <label style="position:relative;display:inline-block;width:44px;height:24px;cursor:pointer">
+      <input type="checkbox" id="forceCloudToggle" onchange="toggleForceCloud()" style="opacity:0;width:0;height:0">
+      <span id="toggleSlider" style="position:absolute;inset:0;background:#555;border-radius:12px;transition:.3s"></span>
+      <span id="toggleKnob" style="position:absolute;left:2px;bottom:2px;width:20px;height:20px;background:white;border-radius:50%;transition:.3s"></span>
+    </label>
+    <span id="toggleLabel" style="font-size:12px;color:#888">关闭</span>
+    <span style="font-size:11px;color:#666;margin-left:8px">开启后视频生产聊天固定使用 DeepSeek 云端 + ComfyUI</span>
+  </div>
+</div>
+
+<script>
+// 加载开关状态
+async function loadForceCloud() {
+  try {
+    const r = await fetch("/api/services/force-cloud-setting");
+    const d = await r.json();
+    const on = d.data?.value === "1";
+    document.getElementById("forceCloudToggle").checked = on;
+    updateToggleUI(on);
+  } catch {}
+}
+async function toggleForceCloud() {
+  const on = document.getElementById("forceCloudToggle").checked;
+  await fetch("/api/services/force-cloud-setting", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({value: on ? "1" : "0"})});
+  updateToggleUI(on);
+}
+function updateToggleUI(on) {
+  const slider = document.getElementById("toggleSlider");
+  const knob = document.getElementById("toggleKnob");
+  const label = document.getElementById("toggleLabel");
+  slider.style.background = on ? "#22c55e" : "#555";
+  knob.style.left = on ? "22px" : "2px";
+  knob.style.background = on ? "#22c55e" : "white";
+  label.textContent = on ? "开启" : "关闭";
+}
+loadForceCloud();
+</script>
 
 <!-- Log section -->
 <div class="log-section">
