@@ -137,30 +137,68 @@ async function refresh() {
   if(!r.success) { document.getElementById("cards").innerHTML = '<div style="color:#f87171;padding:20px;flex:1">'+r.message+'</div>'; return; }
   const d = r.data;
   document.getElementById("cards").innerHTML = card("qwen3", d.qwen3) + card("comfyui", d.comfyui);
-  document.getElementById("sq").innerHTML = '<span class="dot '+(d.qwen3.running?"green":"red")+'"></span> Qwen3: '+(d.qwen3.running?"on":"off");
-  document.getElementById("sc").innerHTML = '<span class="dot '+(d.comfyui.running?"green":"red")+'"></span> ComfyUI: '+(d.comfyui.running?"on":"off");
-  logMsg("服务状态 | Qwen3="+(d.qwen3.running?"运行":"停止")+" ComfyUI="+(d.comfyui.running?"运行":"停止"));
+  const sq = d.qwen3, sc = d.comfyui;
+  document.getElementById("sq").innerHTML = '<span class="dot '+(sq.status==="running"?"green":sq.status==="starting"?"yellow":"red")+'"></span> Qwen3: '+({running:"on",starting:"启动中...",stopped:"off"})[sq.status];
+  document.getElementById("sc").innerHTML = '<span class="dot '+(sc.status==="running"?"green":sc.status==="starting"?"yellow":"red")+'"></span> ComfyUI: '+({running:"on",starting:"启动中...",stopped:"off"})[sc.status];
+  logMsg("服务状态 | Qwen3="+({running:"运行",starting:"启动中",stopped:"停止"})[sq.status]+" ComfyUI="+({running:"运行",starting:"启动中",stopped:"停止"})[sc.status]);
 }
 function card(id, s) {
-  const on = s.running;
+  const st = s.status||(s.running?"running":"stopped");
   return '<div class="card"><div class="card-h"><div><div class="card-name">'+s.name+'</div><div class="card-desc">端口 '+s.port+'</div></div></div>'+
-    '<div class="card-status"><span class="dot '+(on?"green":"red")+'"></span> '+(on?"运行中":"已停止")+'</div>'+
-    '<div>'+(on?'<button class="btn btn-dgr" onclick="stopSvc(\''+id+'\')">停止</button>':'<button class="btn btn-pri" onclick="startSvc(\''+id+'\')">启动</button>')+'</div></div>';
+    '<div class="card-status"><span class="dot '+(st==="running"?"green":st==="starting"?"yellow":"red")+'"></span> '+({running:"运行中",starting:"启动中...",stopped:"已停止"})[st]+'</div>'+
+    '<div>'+(st==="running"?'<button class="btn btn-dgr" onclick="stopSvc(\''+id+'\')">停止</button>':'<button class="btn btn-pri" onclick="startSvc(\''+id+'\')">启动</button>')+'</div></div>';
 }
 async function startSvc(id) {
   logMsg("正在启动 "+id+"...");
   toast("正在启动...");
   const r = await api("/"+(id==="qwen3"?"start-qwen3":"start-comfyui"), {method:"POST"});
-  if(r.success) { toast(r.message||"OK", false); logMsg("启动成功: "+r.message); }
-  else { toast(r.message||"启动失败", true); logMsg("启动失败: "+r.message); }
-  setTimeout(refresh, id==="qwen3"?3000:5000);
+  if(r.success) {
+    toast("启动命令已发送（"+r.message.replace(/https?:\/\/[^ ]+/g,'').trim()+"）", false);
+    logMsg("启动命令已发送，后台监测中...");
+    // 立即刷新状态（显示"启动中"黄点）
+    refresh();
+    // 快速轮询：每 3 秒刷新一次，持续监测启动进度
+    if(window._startPollTimer) clearInterval(window._startPollTimer);
+    window._startPollTimer = setInterval(refresh, 3000);
+    // 记录启动开始时间，给用户预计时间参考
+    window._startTime = Date.now();
+    // 5 分钟后停止快速轮询
+    setTimeout(() => { if(window._startPollTimer) { clearInterval(window._startPollTimer); window._startPollTimer = null; } }, 300000);
+  } else {
+    toast(r.message||"启动失败", true);
+    logMsg("启动失败: "+r.message);
+    setTimeout(refresh, 2000);
+  }
 }
+
+// 在 refresh 基础上增强：添加时间提示和超时提醒
+const origRefresh = refresh;
+refresh = function() {
+  origRefresh();
+  
+  // 检查 comfyui 是否启动太久
+  const sc = document.getElementById("sc");
+  if (!sc) return;
+  const isStarting = sc.textContent.includes("启动中");
+  if (isStarting && window._startTime) {
+    const elapsed = Math.round((Date.now() - window._startTime) / 1000);
+    // 给状态栏加耗时显示（避免修改服务器返回的纯文本）
+    if (elapsed > 10 && elapsed % 15 === 0) {
+      logMsg("ComfyUI 启动中... 已等待 "+elapsed+" 秒（首次启动约需 30-90 秒）");
+    }
+    if (elapsed > 120) {
+      logMsg("⚠️ ComfyUI 启动超过 2 分钟，请检查日志面板是否有错误信息");
+    }
+  }
+};
 async function stopSvc(id) {
   logMsg("正在停止...");
   toast("正在停止...");
   const r = await api("/stop-all", {method:"POST"});
   toast(r.message||"已停止", !r.success);
   logMsg("停止: "+(r.message||"done"));
+  window._startTime = null;
+  if(window._startPollTimer) { clearInterval(window._startPollTimer); window._startPollTimer = null; }
   setTimeout(refresh, 1500);
 }
 async function stopAll() {
