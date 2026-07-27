@@ -40,6 +40,20 @@ let runningProcesses: { qwen3?: ChildProcess; comfyui?: ChildProcess } = {};
 // 启动状态追踪：记录每个服务的启动时间，用于显示"启动中"状态
 const startingTimestamps: Record<string, number> = {};
 
+// 启动锁：防止并发多次启动同一个服务（多次点击 Start 按钮）
+const startLocks: Record<string, Promise<void> | null> = {};
+
+/** 串行化启动：同时只有一个启动流程在执行 */
+async function lockedStart(key: string, fn: () => Promise<void>): Promise<void> {
+  while (startLocks[key]) {
+    await startLocks[key];
+  }
+  startLocks[key] = (async () => {
+    try { await fn(); } finally { startLocks[key] = null; }
+  })();
+  await startLocks[key];
+}
+
 // ============================================================
 // 工具函数
 // ============================================================
@@ -274,6 +288,10 @@ router.get("/status", async (_req: Request, res: Response) => {
 
 /** 启动 Qwen3 */
 router.post("/start-qwen3", async (_req: Request, res: Response) => {
+  if (startLocks["qwen3"]) {
+    return res.send({ success: true, message: "Qwen3 正在启动中，请勿重复点击..." });
+  }
+  await lockedStart("qwen3", async () => {
   try {
     const batPath = CONFIG.qwen3.batPath;
     if (!fs.existsSync(batPath)) {
@@ -330,12 +348,19 @@ router.post("/start-qwen3", async (_req: Request, res: Response) => {
       message: "Qwen3 已启动，等待约 1-2 分钟加载模型...",
     });
   } catch (e: any) {
-    res.status(500).send({ success: false, message: e.message });
+    console.error(`[Qwen3] 启动失败:`, e);
+    if (!res.headersSent) res.status(500).send({ success: false, message: e.message });
   }
+  });
 });
 
 /** 启动 ComfyUI */
 router.post("/start-comfyui", async (_req: Request, res: Response) => {
+  // 启动锁：如果已经有启动流程在执行，直接返回提示不重复启动
+  if (startLocks["comfyui"]) {
+    return res.send({ success: true, message: "ComfyUI 正在启动中，请勿重复点击..." });
+  }
+  await lockedStart("comfyui", async () => {
   try {
     const rootDir = CONFIG.comfyui.rootDir;
     const pythonPath = path.join(rootDir, CONFIG.comfyui.pythonExe);
@@ -397,7 +422,7 @@ router.post("/start-comfyui", async (_req: Request, res: Response) => {
       cwd: rootDir,
       detached: true,
       stdio: ["ignore", logFd, logFd],
-      windowsHide: true,
+      windowsHide: true,  // 隐藏 python.exe 控制台窗口
       env: { ...process.env, PYTHONIOENCODING: "utf-8" },
     });
     proc.unref();
@@ -428,8 +453,9 @@ router.post("/start-comfyui", async (_req: Request, res: Response) => {
     });
   } catch (e: any) {
     console.error(`[ComfyUI] 启动失败:`, e);
-    res.status(500).send({ success: false, message: e.message });
+    if (!res.headersSent) res.status(500).send({ success: false, message: e.message });
   }
+  });
 });
 
 /** 扫描可用工作流文件（用于供应商配置中的文件选择） */
@@ -460,6 +486,104 @@ router.get("/workflows", async (_req: Request, res: Response) => {
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message });
   }
+});
+
+/**
+ * 获取/设置 "视频生产固定云端+ComfyUI" 开关
+ */
+router.get("/force-cloud-setting", async (_req: Request, res: Response) => {
+  try {
+    const row = await (await import("@/utils/db")).default("o_setting").where("key", "productionForceCloud").first();
+    res.json({ success: true, data: { value: row?.value ?? "0" } });
+  } catch (e: any) { res.json({ success: true, data: { value: "0" } }); }
+});
+
+router.post("/force-cloud-setting", async (req: Request, res: Response) => {
+  try {
+    const { value } = req.body; // "1" 或 "0"
+    const db = (await import("@/utils/db")).default;
+    const existing = await db("o_setting").where("key", "productionForceCloud").first();
+    if (existing) await db("o_setting").where("key", "productionForceCloud").update({ value });
+    else await db("o_setting").insert({ key: "productionForceCloud", value });
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+/**
+ * 诊断 ComfyUI 服务状态（详细版，用于排查问题）
+ * 写入日志文件供分析
+ */
+router.get("/diagnose", async (_req: Request, res: Response) => {
+  const logDir = path.join(process.cwd(), "data", "logs");
+  const diagPath = path.join(logDir, "comfyui_diagnostic.log");
+  const lines: string[] = [];
+  const log = (msg: string) => { const t = new Date().toISOString(); const l = `[${t}] ${msg}`; lines.push(l); console.log(l); };
+
+  try {
+    log("=== ComfyUI 诊断 ===");
+    
+    // 1. 端口检测
+    const portOpen = await checkPort(8188);
+    log(`端口 8188: ${portOpen ? "开放" : "关闭"}`);
+
+    // 2. API 检测
+    if (portOpen) {
+      try {
+        const infoRes = await fetch("http://127.0.0.1:8188/object_info", { signal: AbortSignal.timeout(5000) });
+        log(`/object_info: HTTP ${infoRes.status} (${(await infoRes.text()).length} bytes)`);
+      } catch (e: any) {
+        log(`/object_info 错误: ${e.message}`);
+      }
+
+      try {
+        const queueRes = await fetch("http://127.0.0.1:8188/queue", { signal: AbortSignal.timeout(5000) });
+        const queueData = await queueRes.json();
+        const running = queueData.queue_running?.length ?? 0;
+        const pending = Object.keys(queueData.queue_pending ?? {}).length;
+        log(`队列: ${running} 运行中, ${pending} 待处理`);
+      } catch (e: any) {
+        log(`/queue 错误: ${e.message}`);
+      }
+    }
+
+    // 3. Python 进程
+    try {
+      const out = execSync("tasklist /FI \"IMAGENAME eq python.exe\" /NH", { encoding: "utf8", timeout: 3000 });
+      const count = out.split("\n").filter(l => l.includes("python.exe")).length;
+      log(`python.exe 进程数: ${count}`);
+    } catch { log("python.exe: 无法检测"); }
+
+    // 4. 工作流文件
+    const wfDir = path.join(process.cwd(), "ComfyUI", "workflows");
+    if (fs.existsSync(wfDir)) {
+      const files = fs.readdirSync(wfDir).filter(f => f.endsWith(".json"));
+      for (const f of files) {
+        const fp = path.join(wfDir, f);
+        const stat = fs.statSync(fp);
+        const content = fs.readFileSync(fp, "utf-8");
+        const hasPrompt = content.includes("__PROMPT__");
+        const isApiFormat = /"\d+":\s*\{\s*"inputs"/.test(content);
+        log(`工作流 [${f}]: ${(stat.size / 1024).toFixed(1)}KB, __PROMPT__=${hasPrompt}, API格式=${isApiFormat}`);
+      }
+    }
+
+    // 5. ComfyUI 日志
+    const comfyLog = path.join(logDir, "comfyui_console.log");
+    if (fs.existsSync(comfyLog)) {
+      const stat = fs.statSync(comfyLog);
+      const tail = fs.readFileSync(comfyLog, "utf-8").trim().split("\n").slice(-10).join("\n");
+      log(`ComfyUI 控制台日志: ${(stat.size / 1024).toFixed(1)}KB\n最近 10 行:\n${tail}`);
+    }
+
+    log("=== 诊断完成 ===");
+  } catch (e: any) {
+    log(`诊断异常: ${e.message}`);
+  }
+
+  // 写入日志文件
+  try { fs.appendFileSync(diagPath, "\n" + lines.join("\n") + "\n"); } catch {}
+
+  res.json({ success: true, data: lines.join("\n") });
 });
 
 /** 停止所有服务 */
