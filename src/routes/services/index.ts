@@ -25,12 +25,12 @@ const CONFIG = {
   comfyui: {
     name: "ComfyUI",
     rootDir: "E:\\AI\\ComfyAI_Video-ShortVideo\\ComfyUI纯包\\ComfyUI",
-    // 使用 python.exe（控制台应用），不用 pythonw.exe（GUI应用）
-    // python.exe 可以通过 stdio 重定向正常捕获输出
-    pythonExe: "python\\python.exe",
+    // 使用 pythonw.exe（无窗口GUI应用），启动时不会闪烁控制台窗口
+    // 之前 pythonw.exe 启动失败是因为异步 taskkill 误杀进程，现已修复
+    pythonExe: "python\\pythonw.exe",
     mainScript: "ComfyUI\\main.py",
     port: 8188,
-    processName: "python.exe",
+    processName: "pythonw.exe",
   },
 };
 

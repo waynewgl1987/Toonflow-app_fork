@@ -76,7 +76,7 @@ async function ensureComfyUI(socket: Socket, resTool: ResTool): Promise<boolean>
 
   // 启动 ComfyUI（复用 services/index.ts 的路径）
   const rootDir = "E:\\AI\\ComfyAI_Video-ShortVideo\\ComfyUI纯包\\ComfyUI";
-  const pythonPath = path.join(rootDir, "python\\python.exe");
+  const pythonPath = path.join(rootDir, "python\\pythonw.exe");
   const scriptPath = path.join(rootDir, "ComfyUI\\main.py");
   const logDir = path.join(process.cwd(), "data", "logs");
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });

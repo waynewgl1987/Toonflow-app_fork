@@ -36,7 +36,7 @@ const SERVICES = {
     name: "ComfyUI",
     start: async () => {
       const rootDir = "E:\\AI\\ComfyAI_Video-ShortVideo\\ComfyUI纯包\\ComfyUI";
-      const pythonExe = path.join(rootDir, "python\\python.exe");
+      const pythonExe = path.join(rootDir, "python\\pythonw.exe");
       const mainScript = path.join(rootDir, "ComfyUI\\main.py");
       if (!fs.existsSync(pythonExe)) throw new Error(`ComfyUI Python 不存在: ${pythonExe}`);
       if (!fs.existsSync(mainScript)) throw new Error(`ComfyUI 主脚本不存在: ${mainScript}`);
