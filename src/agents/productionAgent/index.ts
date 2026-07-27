@@ -10,6 +10,16 @@ import * as fs from "fs";
 import path from "path";
 import logger from "@/logger";
 
+// 诊断日志：写入 data/logs/agent_diagnostic.log
+const DIAG_LOG = path.join(process.cwd(), "data", "logs", "agent_diagnostic.log");
+function diagLog(msg: string, data?: any) {
+  try {
+    const ts = new Date().toISOString();
+    const line = `[${ts}] ${msg}${data ? " " + JSON.stringify(data).slice(0, 500) : ""}\n`;
+    fs.appendFileSync(DIAG_LOG, line);
+  } catch {} // 静默失败，不阻塞主流程
+}
+
 export interface AgentContext {
   socket: Socket;
   isolationKey: string;
@@ -46,15 +56,22 @@ export async function runDecisionAI(ctx: AgentContext) {
   const agentId = `pa_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   logger.genLog({ event: "productionAgent_start", agentId, isolationKey, projectId: ctx.resTool.data.projectId, text: text.slice(0, 200) });
 
+  // 诊断日志
+  const stepLog = (step: string, detail?: string) => diagLog(`[${agentId}] ${step}`, detail ? { detail: detail.slice(0, 200) } : undefined);
+  stepLog("START", text);
+
   const memory = new Memory("productionAgent", isolationKey);
   await memory.add("user", text);
 
   const skill = path.join(u.getPath("skills"), "production_agent_decision.md");
   const prompt = await fs.promises.readFile(skill, "utf-8");
   logger.genLog({ event: "productionAgent_skill_loaded", agentId, skill });
+  stepLog("SKILL_LOADED");
 
   const projectInfo = await u.db("o_project").where("id", ctx.resTool.data.projectId).first();
   if (!projectInfo) throw new Error(`项目不存在，ID: ${ctx.resTool.data.projectId}`);
+  stepLog("PROJECT_LOADED", projectInfo.name);
+
   const [_, imageModelName] = projectInfo.imageModel!.split(/:(.+)/);
   const [id, videoModelName] = projectInfo.videoModel!.split(/:(.+)/);
   const models = await u.vendor.getModelList(id);
@@ -71,47 +88,77 @@ export async function runDecisionAI(ctx: AgentContext) {
 
   const mem = buildMemPrompt(await memory.get(text));
 
-  // ── 智能模型选择：本地 Qwen3 → 云端兜底 ──
-  const fallbackTextModel = await u.Ai.resolveFallbackTextModel("productionAgent:decisionAgent").catch(() => null);
-  const textModelKey = fallbackTextModel ?? "productionAgent:decisionAgent";
-  const [chosenVendorId] = textModelKey.split(/:(.+)/);
-  // 如果选了云端模型，在聊天中提示用户
-  if (fallbackTextModel && chosenVendorId !== "openai") {
-    ctx.resTool.socket.emit("content:add", {
-      messageId: ctx.msg.id,
-      content: { type: "activity", id: `fallback_${Date.now()}`, data: { activityType: "info", content: "本地 Qwen3 未运行，自动使用云端模型回复" } },
-      status: "streaming",
-    });
-    logger.genLog({ event: "productionAgent_fallback_cloud", agentId, fallbackVendor: chosenVendorId });
+  // ── 读取开关配置 ──
+  let forceCloud = false;
+  try {
+    const setting = await u.db("o_setting").where("key", "productionForceCloud").first();
+    forceCloud = setting?.value === "1";
+  } catch {}
+  stepLog(`FORCE_CLOUD=${forceCloud}`);
+
+  // ── 智能模型选择 ──
+  stepLog("RESOLVE_MODEL_START");
+  let textModelKey: string;
+  try {
+    const fallbackTextModel = await u.Ai.resolveFallbackTextModel("productionAgent:decisionAgent", forceCloud);
+    textModelKey = fallbackTextModel;
+    const [chosenVendorId] = textModelKey.split(/:(.+)/);
+    stepLog("RESOLVE_MODEL_OK", `${textModelKey} vendor=${chosenVendorId}`);
+    
+    if (chosenVendorId !== "openai") {
+      ctx.resTool.socket.emit("content:add", {
+        messageId: ctx.msg.id,
+        content: { type: "activity", id: `fallback_${Date.now()}`, data: { activityType: "info", content: "本地 Qwen3 未运行，自动使用云端模型回复" } },
+        status: "streaming",
+      });
+      logger.genLog({ event: "productionAgent_fallback_cloud", agentId, fallbackVendor: chosenVendorId });
+    }
+  } catch (e: any) {
+    const errMsg = `模型选择失败: ${e.message}`;
+    stepLog("RESOLVE_MODEL_ERROR", errMsg);
+    ctx.msg.error(errMsg);
+    logger.genLog({ event: "productionAgent_model_error", agentId, error: errMsg });
+    return; // 无法继续
   }
 
-  const { fullStream } = await u.Ai.Text(textModelKey, ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
-    messages: [
-      { role: "system", content: prompt },
-      { role: "assistant", content: mem + "\n" + modelInfo },
-      { role: "user", content: text },
-    ],
-    abortSignal,
-    tools: {
-      ...memory.getTools(),
-      ...useTools({ resTool: ctx.resTool, msg: ctx.msg }),
-      ...(await createSubAgent(ctx)),
-    },
-    onFinish: async (completion) => {
-      await memory.add("assistant:decision", removeAllXmlTags(completion.text));
-    },
-  });
+  // ── AI 文本调用 ──
+  stepLog("AI_TEXT_STREAM_START", textModelKey);
+  try {
+    const { fullStream } = await u.Ai.Text(textModelKey as any, ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
+      messages: [
+        { role: "system", content: prompt },
+        { role: "assistant", content: mem + "\n" + modelInfo },
+        { role: "user", content: text },
+      ],
+      abortSignal,
+      tools: {
+        ...memory.getTools(),
+        ...useTools({ resTool: ctx.resTool, msg: ctx.msg }),
+        ...(await createSubAgent(ctx, forceCloud)),
+      },
+      onFinish: async (completion) => {
+        await memory.add("assistant:decision", removeAllXmlTags(completion.text));
+        stepLog("AI_TEXT_STREAM_FINISH", `tokens=${completion.text.length}`);
+      },
+    });
 
-  let currentMsg = ctx.msg;
-  await consumeFullStream(fullStream, currentMsg, () => {
-    if (ctx.msg === currentMsg) return currentMsg;
-    currentMsg.complete();
-    currentMsg = ctx.msg;
-    return currentMsg;
-  });
+    let currentMsg = ctx.msg;
+    await consumeFullStream(fullStream, currentMsg, () => {
+      if (ctx.msg === currentMsg) return currentMsg;
+      currentMsg.complete();
+      currentMsg = ctx.msg;
+      return currentMsg;
+    });
+    stepLog("AI_TEXT_STREAM_DONE");
+  } catch (e: any) {
+    const errMsg = `AI 调用失败: ${e.message}`;
+    stepLog("AI_TEXT_STREAM_ERROR", errMsg);
+    ctx.msg.error(errMsg);
+    logger.genLog({ event: "productionAgent_stream_error", agentId, error: errMsg, stack: (e as Error).stack?.slice(0, 300) });
+  }
 }
 
-async function createSubAgent(parentCtx: AgentContext) {
+async function createSubAgent(parentCtx: AgentContext, forceCloud: boolean = false) {
   const { resTool, abortSignal } = parentCtx;
   const memory = new Memory("productionAgent", parentCtx.isolationKey);
   async function runAgent({
@@ -134,8 +181,8 @@ async function createSubAgent(parentCtx: AgentContext) {
     parentCtx.msg.complete();
     const subMsg = resTool.newMessage("assistant", name);
 
-    // 子 Agent 也使用智能模型选择（本地 Qwen3 → 云端兜底）
-    const fallbackTextModel = await u.Ai.resolveFallbackTextModel(key).catch(() => null);
+    // 子 Agent 使用同样的 forceCloud 策略
+    const fallbackTextModel = await u.Ai.resolveFallbackTextModel(key, forceCloud).catch(() => null);
     const textModelKey = fallbackTextModel ?? key;
 
     const { fullStream } = await u.Ai.Text(textModelKey, parentCtx.thinkConfig.think, parentCtx.thinkConfig.thinlLevel).stream({

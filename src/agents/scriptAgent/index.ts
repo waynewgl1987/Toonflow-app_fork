@@ -9,6 +9,16 @@ import * as fs from "fs";
 import path from "path";
 import logger from "@/logger";
 
+// 诊断日志：写入 data/logs/agent_diagnostic.log
+const DIAG_LOG = path.join(process.cwd(), "data", "logs", "agent_diagnostic.log");
+function diagLog(msg: string, data?: any) {
+  try {
+    const ts = new Date().toISOString();
+    const line = `[${ts}] ${msg}${data ? " " + JSON.stringify(data).slice(0, 500) : ""}\n`;
+    fs.appendFileSync(DIAG_LOG, line);
+  } catch {}
+}
+
 export interface AgentContext {
   socket: Socket;
   isolationKey: string;
@@ -44,12 +54,16 @@ export async function runDecisionAI(ctx: AgentContext) {
   const agentId = `sa_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   logger.genLog({ event: "scriptAgent_start", agentId, isolationKey, projectId: resTool.data.projectId, text: text.slice(0, 200) });
 
+  const stepLog = (step: string, detail?: string) => diagLog(`[${agentId}] ${step}`, detail ? { detail: detail.slice(0, 200) } : undefined);
+  stepLog("START", text);
+
   const memory = new Memory("scriptAgent", isolationKey);
   await memory.add("user", text, { createTime: userMessageTime });
 
   const skill = path.join(u.getPath("skills"), "script_agent_decision.md");
   const prompt = await fs.promises.readFile(skill, "utf-8");
   logger.genLog({ event: "scriptAgent_skill_loaded", agentId, skill });
+  stepLog("SKILL_LOADED");
 
   const mem = buildMemPrompt(await memory.get(text));
 
@@ -80,34 +94,48 @@ export async function runDecisionAI(ctx: AgentContext) {
   });
 
   // ── 智能模型选择：本地 Qwen3 → 云端兜底 ──
-  const fallbackTextModel = await u.Ai.resolveFallbackTextModel("scriptAgent:decisionAgent").catch(() => null);
-  const textModelKey = fallbackTextModel ?? "scriptAgent:decisionAgent";
-  const [chosenVendorId] = textModelKey.split(/:(.+)/);
-  if (fallbackTextModel && chosenVendorId !== "openai") {
-    ctx.resTool.socket.emit("content:add", {
-      messageId: ctx.msg.id,
-      content: { type: "activity", id: `fallback_${Date.now()}`, data: { activityType: "info", content: "本地 Qwen3 未运行，自动使用云端模型回复" } },
-      status: "streaming",
-    });
-    logger.genLog({ event: "scriptAgent_fallback_cloud", agentId, fallbackVendor: chosenVendorId });
+  stepLog("RESOLVE_MODEL_START");
+  let textModelKey: string;
+  try {
+    const fallbackTextModel = await u.Ai.resolveFallbackTextModel("scriptAgent:decisionAgent");
+    textModelKey = fallbackTextModel;
+    const [chosenVendorId] = textModelKey.split(/:(.+)/);
+    stepLog("RESOLVE_MODEL_OK", `${textModelKey} vendor=${chosenVendorId}`);
+    if (chosenVendorId !== "openai") {
+      resTool.socket.emit("content:add", {
+        messageId: ctx.msg.id,
+        content: { type: "activity", id: `fallback_${Date.now()}`, data: { activityType: "info", content: "本地 Qwen3 未运行，自动使用云端模型回复" } },
+        status: "streaming",
+      });
+      logger.genLog({ event: "scriptAgent_fallback_cloud", agentId, fallbackVendor: chosenVendorId });
+    }
+  } catch (e: any) {
+    const errMsg = `模型选择失败: ${e.message}`;
+    stepLog("RESOLVE_MODEL_ERROR", errMsg);
+    ctx.msg.error(errMsg);
+    return;
   }
 
-  const { fullStream } = await u.Ai.Text(textModelKey, ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
-    messages: [
-      { role: "system", content: prompt },
-      { role: "assistant", content: projectInfo + "\n" + mem },
-      { role: "user", content: text },
-    ],
-    abortSignal,
-    tools: {
-      ...memory.getTools(),
-      ...useTools({ resTool: ctx.resTool, msg: ctx.msg }),
-      ...createSubAgent(ctx, agentId),
-    },
-    onFinish: async (completion) => {
-      await memory.add("assistant:decision", removeAllXmlTags(completion.text));
-    },
-  });
+  // ── AI 文本调用 ──
+  stepLog("AI_TEXT_STREAM_START", textModelKey);
+  try {
+    const { fullStream } = await u.Ai.Text(textModelKey as any, ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
+      messages: [
+        { role: "system", content: prompt },
+        { role: "assistant", content: projectInfo + "\n" + mem },
+        { role: "user", content: text },
+      ],
+      abortSignal,
+      tools: {
+        ...memory.getTools(),
+        ...useTools({ resTool: ctx.resTool, msg: ctx.msg }),
+        ...createSubAgent(ctx, agentId),
+      },
+      onFinish: async (completion) => {
+        await memory.add("assistant:decision", removeAllXmlTags(completion.text));
+        stepLog("AI_TEXT_STREAM_FINISH", `tokens=${completion.text.length}`);
+      },
+    });
 
   let currentMsg = ctx.msg;
   await consumeFullStream(fullStream, currentMsg, () => {
@@ -116,6 +144,13 @@ export async function runDecisionAI(ctx: AgentContext) {
     currentMsg = ctx.msg;
     return currentMsg;
   });
+  stepLog("AI_TEXT_STREAM_DONE");
+  } catch (e: any) {
+    const errMsg = `AI 调用失败: ${e.message}`;
+    stepLog("AI_TEXT_STREAM_ERROR", errMsg);
+    ctx.msg.error(errMsg);
+    logger.genLog({ event: "scriptAgent_stream_error", agentId, error: errMsg, stack: (e as Error).stack?.slice(0, 300) });
+  }
 }
 
 function createSubAgent(parentCtx: AgentContext, agentId: string) {
