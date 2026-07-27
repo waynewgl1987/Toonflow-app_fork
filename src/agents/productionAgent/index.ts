@@ -66,14 +66,26 @@ export async function runDecisionAI(ctx: AgentContext) {
     videoMode = projectInfo.mode ?? "";
   }
   const isRef = Array.isArray(videoMode) ? true : false;
-  // const findData = models.find((i: any) => i.modelName == videoModelName);
-  // const isRef = findData.mode.every((i: any) => Array.isArray(i));
 
   const modelInfo = `项目使用的模型如下：\n图像模型：${imageModelName}\n视频模型：${videoModelName}\n多参：${isRef ? "是" : "否"}`;
 
   const mem = buildMemPrompt(await memory.get(text));
 
-  const { fullStream } = await u.Ai.Text("productionAgent:decisionAgent", ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
+  // ── 智能模型选择：本地 Qwen3 → 云端兜底 ──
+  const fallbackTextModel = await u.Ai.resolveFallbackTextModel("productionAgent:decisionAgent").catch(() => null);
+  const textModelKey = fallbackTextModel ?? "productionAgent:decisionAgent";
+  const [chosenVendorId] = textModelKey.split(/:(.+)/);
+  // 如果选了云端模型，在聊天中提示用户
+  if (fallbackTextModel && chosenVendorId !== "openai") {
+    ctx.resTool.socket.emit("content:add", {
+      messageId: ctx.msg.id,
+      content: { type: "activity", id: `fallback_${Date.now()}`, data: { activityType: "info", content: "本地 Qwen3 未运行，自动使用云端模型回复" } },
+      status: "streaming",
+    });
+    logger.genLog({ event: "productionAgent_fallback_cloud", agentId, fallbackVendor: chosenVendorId });
+  }
+
+  const { fullStream } = await u.Ai.Text(textModelKey, ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
     messages: [
       { role: "system", content: prompt },
       { role: "assistant", content: mem + "\n" + modelInfo },
@@ -122,7 +134,11 @@ async function createSubAgent(parentCtx: AgentContext) {
     parentCtx.msg.complete();
     const subMsg = resTool.newMessage("assistant", name);
 
-    const { fullStream } = await u.Ai.Text(key, parentCtx.thinkConfig.think, parentCtx.thinkConfig.thinlLevel).stream({
+    // 子 Agent 也使用智能模型选择（本地 Qwen3 → 云端兜底）
+    const fallbackTextModel = await u.Ai.resolveFallbackTextModel(key).catch(() => null);
+    const textModelKey = fallbackTextModel ?? key;
+
+    const { fullStream } = await u.Ai.Text(textModelKey, parentCtx.thinkConfig.think, parentCtx.thinkConfig.thinlLevel).stream({
       system,
       messages: messages ?? [{ role: "user", content: prompt }],
       abortSignal,

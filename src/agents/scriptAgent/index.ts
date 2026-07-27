@@ -79,7 +79,20 @@ export async function runDecisionAI(ctx: AgentContext) {
     },
   });
 
-  const { fullStream } = await u.Ai.Text("scriptAgent:decisionAgent", ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
+  // ── 智能模型选择：本地 Qwen3 → 云端兜底 ──
+  const fallbackTextModel = await u.Ai.resolveFallbackTextModel("scriptAgent:decisionAgent").catch(() => null);
+  const textModelKey = fallbackTextModel ?? "scriptAgent:decisionAgent";
+  const [chosenVendorId] = textModelKey.split(/:(.+)/);
+  if (fallbackTextModel && chosenVendorId !== "openai") {
+    ctx.resTool.socket.emit("content:add", {
+      messageId: ctx.msg.id,
+      content: { type: "activity", id: `fallback_${Date.now()}`, data: { activityType: "info", content: "本地 Qwen3 未运行，自动使用云端模型回复" } },
+      status: "streaming",
+    });
+    logger.genLog({ event: "scriptAgent_fallback_cloud", agentId, fallbackVendor: chosenVendorId });
+  }
+
+  const { fullStream } = await u.Ai.Text(textModelKey, ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
     messages: [
       { role: "system", content: prompt },
       { role: "assistant", content: projectInfo + "\n" + mem },
@@ -140,7 +153,11 @@ function createSubAgent(parentCtx: AgentContext, agentId: string) {
 
     const subMsg = resTool.newMessage("assistant", name);
 
-    const { fullStream } = await u.Ai.Text(key, parentCtx.thinkConfig.think, parentCtx.thinkConfig.thinlLevel).stream({
+    // 子 Agent 也使用智能模型选择（本地 Qwen3 → 云端兜底）
+    const fallbackTextModel = await u.Ai.resolveFallbackTextModel(key).catch(() => null);
+    const textModelKey = fallbackTextModel ?? key;
+
+    const { fullStream } = await u.Ai.Text(textModelKey, parentCtx.thinkConfig.think, parentCtx.thinkConfig.thinlLevel).stream({
       system,
       messages: messages ?? [{ role: "user", content: prompt }],
       abortSignal,
