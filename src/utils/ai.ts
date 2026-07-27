@@ -6,7 +6,8 @@ import * as fs from "fs";
 import * as path from "path";
 import u from "@/utils";
 import logger from "@/logger";
-import { ensureService } from "@/utils/serviceManager";
+import { ensureService, getServiceStatus } from "@/utils/serviceManager";
+import net from "net";
 
 type AiType =
   | "scriptAgent"
@@ -474,6 +475,42 @@ class AiAudio {
     await u.oss.writeFile(path, this.result);
     return this;
   }
+}
+
+/**
+ * 智能文本模型选择器（带本地→云端兜底）
+ *
+ * 优先级：
+ * 1. 本地 Qwen3 正在运行 → 使用配置的模型（openai:xxx，指向本地 Qwen3）
+ * 2. Qwen3 未运行 → 查找可用的云端文本供应商 → 使用云端模型
+ * 3. 没有云端供应商 → 抛出错误
+ *
+ * 返回：模型 key 格式为 "vendorId:modelName"
+ */
+export async function resolveFallbackTextModel(agentKey: AiType | `${string}:${string}`): Promise<`${string}:${string}`> {
+  const configuredModel = await resolveModelName(agentKey);
+  const [vendorId] = configuredModel.split(/:(.+)/);
+
+  // 如果不是本地 openai 供应商（指向 localhost），直接使用配置的模型
+  if (vendorId !== "openai") return configuredModel;
+
+  // 检查本地 Qwen3 是否在运行
+  const status = await getServiceStatus();
+  if (status.qwen3.running) return configuredModel;
+
+  // Qwen3 未运行 → 查找云端兜底供应商
+  const { findCloudTextVendor } = await import("@/utils/vendor");
+  const cloudVendor = await findCloudTextVendor();
+  if (!cloudVendor) {
+    throw new Error(
+      "⚠️ 没有可用的 AI 服务。\n" +
+      "请选择以下方式之一：\n" +
+      "1. 启动本地 Qwen3 服务（控制台 → 启动 Qwen3）\n" +
+      "2. 在「设置 → 模型服务」中配置云端 DeepSeek 模型"
+    );
+  }
+
+  return `${cloudVendor.id}:${cloudVendor.modelName}` as `${string}:${string}`;
 }
 
 export default {

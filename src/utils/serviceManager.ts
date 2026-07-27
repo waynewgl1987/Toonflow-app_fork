@@ -36,18 +36,17 @@ const SERVICES = {
     name: "ComfyUI",
     start: async () => {
       const rootDir = "E:\\AI\\ComfyAI_Video-ShortVideo\\ComfyUI纯包\\ComfyUI";
-      // 使用 pythonw.exe（无窗口版本），彻底消除控制台窗口闪现
-      const pythonExe = path.join(rootDir, "python\\pythonw.exe");
+      const pythonExe = path.join(rootDir, "python\\python.exe");
       const mainScript = path.join(rootDir, "ComfyUI\\main.py");
-      if (!fs.existsSync(pythonExe)) throw new Error(`ComfyUI Python 不存在: ${pythonExe}（请确认 pythonw.exe 存在）`);
-      // pythonw.exe 没有控制台，stdout/stderr 必须重定向到文件，否则会丢失输出
-      // 日志重定向在 spawn stdio 中处理
+      if (!fs.existsSync(pythonExe)) throw new Error(`ComfyUI Python 不存在: ${pythonExe}`);
       if (!fs.existsSync(mainScript)) throw new Error(`ComfyUI 主脚本不存在: ${mainScript}`);
       const logDir = path.join(process.cwd(), "data", "logs");
       if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
       const comfyLogPath = path.join(logDir, "comfyui_console.log");
       const logFd = fs.openSync(comfyLogPath, "a");
       fs.writeSync(logFd, `\n--- ComfyUI (auto) start at ${new Date().toISOString()} ---\n`);
+
+      // 使用 python.exe（控制台应用）+ 直接 spawn，stdout/stderr 重定向到日志文件
       const proc = spawn(pythonExe, [mainScript, "--listen", "--port", "8188"], {
         cwd: rootDir,
         detached: true,
