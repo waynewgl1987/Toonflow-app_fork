@@ -8,7 +8,7 @@
  * - 服务相位追踪：知道服务处于 stopped/starting/ready 哪个阶段
  * - 去掉了对运行中任务的 /interrupt（ComfyUI 自己会排队）
  */
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import path from "path";
 import fs from "fs";
 import net from "net";
@@ -28,7 +28,7 @@ const SERVICES = {
       proc.unref();
     },
     stop: async () => {
-      try { spawn("taskkill", ["/f", "/im", "llama-server.exe"]); } catch {}
+      try { execSync("taskkill /f /im llama-server.exe", { stdio: "ignore" }); } catch {}
     },
   },
   comfyui: {
@@ -73,12 +73,12 @@ const SERVICES = {
     },
     stop: async () => {
       try {
-        const pidInfo = require("child_process").execSync(`netstat -ano | findstr ":8188 "`).toString();
+        const pidInfo = execSync(`netstat -ano | findstr ":8188 "`).toString();
         if (pidInfo) {
           const lines = pidInfo.trim().split("\n");
           for (const line of lines) {
             const m = line.match(/(\d+)\s*$/m);
-            if (m) spawn("taskkill", ["/f", "/pid", m[1]]);
+            if (m) execSync(`taskkill /f /pid ${m[1]}`, { stdio: "ignore" });
           }
         }
       } catch (e) {
@@ -243,6 +243,20 @@ export async function ensureService(fnName: string, vendorId: string): Promise<b
   if (!required) return true;
 
   const svc = SERVICES[required];
+
+  // ── 安全守卫：ComfyUI 运行时禁止启动 Qwen3 ──
+  // 防止任何代码路径意外启动 Qwen3 导致 ComfyUI 被杀
+  if (required === "qwen3") {
+    const comfyRunning = await checkPort(SERVICES.comfyui.port);
+    if (comfyRunning) {
+      logger.genLog({ event: "svc_guard_block_qwen3", reason: "ComfyUI 正在运行，禁止启动 Qwen3 以避免冲突" });
+      throw new Error(
+        "ComfyUI 正在运行，无法启动本地 Qwen3。\n" +
+        "视频生产页面应使用云端 DeepSeek 模型进行文本处理。\n" +
+        "如需使用本地 Qwen3，请先停止 ComfyUI。"
+      );
+    }
+  }
 
   // ── 第 1 步：检查端口 ──
   let portOpen = await checkPort(svc.port);

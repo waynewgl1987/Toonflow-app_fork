@@ -44,7 +44,18 @@ class Memory {
 
   private async generateSummary(contents: string[]): Promise<string> {
     const { summaryMaxLength } = await this.getConfigData({ summaryMaxLength: DEFAULTS.summaryMaxLength });
-    const { text } = await u.Ai.Text(this.agentType as any).invoke({
+    // 使用兜底模型：读取 productionForceCloud 开关
+    let forceCloud = false;
+    try {
+      const setting = await u.db("o_setting").where("key", "productionForceCloud").first();
+      forceCloud = setting?.value === "1";
+    } catch {}
+    let modelKey: any = this.agentType;
+    try {
+      const fallbackKey = await u.Ai.resolveFallbackTextModel(this.agentType as any, forceCloud);
+      if (fallbackKey) modelKey = fallbackKey;
+    } catch {}
+    const { text } = await u.Ai.Text(modelKey).invoke({
       system: `你是一个记忆压缩助手。请将以下多条记忆内容压缩为一段简洁的摘要，不超过${summaryMaxLength}个字符。只输出摘要内容，不要加任何前缀或解释。`,
       messages: [{ role: "user", content: contents.map((c, i) => `${i + 1}. ${c}`).join("\n") }],
     });
@@ -53,7 +64,18 @@ class Memory {
 
   private async judgeSummaryRelevance(keyword: string, summaries: { id: string; content: string }[]): Promise<string[]> {
     const list = summaries.map((s) => `[${s.id}] ${s.content}`).join("\n");
-    const { text } = await u.Ai.Text(this.agentType as any).invoke({
+    // 使用兜底模型：读取 productionForceCloud 开关
+    let forceCloud = false;
+    try {
+      const setting = await u.db("o_setting").where("key", "productionForceCloud").first();
+      forceCloud = setting?.value === "1";
+    } catch {}
+    let modelKey: any = this.agentType;
+    try {
+      const fallbackKey = await u.Ai.resolveFallbackTextModel(this.agentType as any, forceCloud);
+      if (fallbackKey) modelKey = fallbackKey;
+    } catch {}
+    const { text } = await u.Ai.Text(modelKey).invoke({
       system:
         '你是一个信息检索助手。用户会给你一个关键词和一组摘要，请判断哪些摘要可能包含与关键词相关的详细信息。只返回相关摘要的id列表，用JSON数组格式，例如 ["id1","id2"]。不要解释。',
       messages: [{ role: "user", content: `关键词: ${keyword}\n\n摘要列表:\n${list}` }],

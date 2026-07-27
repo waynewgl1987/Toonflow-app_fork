@@ -487,30 +487,82 @@ class AiAudio {
  *
  * 返回：模型 key 格式为 "vendorId:modelName"
  */
-export async function resolveFallbackTextModel(agentKey: AiType | `${string}:${string}`): Promise<`${string}:${string}`> {
+/**
+ * 检查本地 Qwen3 是否在运行，如果不在运行且 ComfyUI 在运行，
+ * 则返回云端兜底模型 key，避免启动 Qwen3 杀掉 ComfyUI
+ */
+/**
+ * 智能文本模型选择器（带本地→云端兜底）
+ * @param forceCloud true=强制使用云端，false=本地优先（默认）
+ */
+export async function resolveFallbackTextModel(agentKey: AiType | `${string}:${string}`, forceCloud: boolean = false): Promise<`${string}:${string}`> {
   const configuredModel = await resolveModelName(agentKey);
   const [vendorId] = configuredModel.split(/:(.+)/);
+  const diagFile = path.join(process.cwd(), "data", "logs", "agent_diagnostic.log");
+  const diag = (msg: string) => { try { fs.appendFileSync(diagFile, `  [resolveFallback] ${msg}\n`); } catch {} };
 
-  // 如果不是本地 openai 供应商（指向 localhost），直接使用配置的模型
-  if (vendorId !== "openai") return configuredModel;
+  diag(`agentKey=${agentKey} configuredModel=${configuredModel} vendorId=${vendorId} forceCloud=${forceCloud}`);
 
-  // 检查本地 Qwen3 是否在运行
-  const status = await getServiceStatus();
-  if (status.qwen3.running) return configuredModel;
+  // 只处理指向本地 Qwen3 的 openai 供应商
+  if (vendorId !== "openai") { diag(`vendor不是openai，直接返回`); return configuredModel; }
 
-  // Qwen3 未运行 → 查找云端兜底供应商
-  const { findCloudTextVendor } = await import("@/utils/vendor");
-  const cloudVendor = await findCloudTextVendor();
-  if (!cloudVendor) {
-    throw new Error(
-      "⚠️ 没有可用的 AI 服务。\n" +
-      "请选择以下方式之一：\n" +
-      "1. 启动本地 Qwen3 服务（控制台 → 启动 Qwen3）\n" +
-      "2. 在「设置 → 模型服务」中配置云端 DeepSeek 模型"
-    );
+  // forceCloud=true → 跳过本地检查，直接找云端
+  if (forceCloud) {
+    diag(`forceCloud=true，跳过本地 Qwen3`);
+  } else {
+    // 检查本地 Qwen3 是否在运行
+    const status = await getServiceStatus();
+    diag(`Qwen3运行=${status.qwen3.running} ComfyUI运行=${status.comfyui.running}`);
+    if (status.qwen3.running) { diag(`Qwen3在运行，返回原模型`); return configuredModel; }
   }
 
-  return `${cloudVendor.id}:${cloudVendor.modelName}` as `${string}:${string}`;
+  // Qwen3 不在运行 → 尝试从已启用的供应商中找云端文本模型
+  const cloudVendors = ["deepseek", "openai", "atlascloud"];
+  for (const vid of cloudVendors) {
+    diag(`检查云端供应商: ${vid}`);
+    try {
+      const vmod = await import("@/utils/vendor");
+      const models = await vmod.getModelList(vid).catch((e: any) => { diag(`  getModelList失败: ${e.message}`); return []; });
+      diag(`  模型列表: ${models.length}个`);
+      if (models.length === 0) continue;
+
+      // 检查是否是本地供应商
+      const vcfg = await import("@/utils/db").then(async m => {
+        try {
+          const db = (m as any).default || m;
+          if (typeof db === "function") {
+            const row = await db("o_vendorConfig").where("id", vid).first();
+            return row;
+          }
+        } catch (e: any) { diag(`  DB查询失败: ${e.message}`); }
+        return null;
+      });
+      if (!vcfg) { diag(`  未找到供应商配置`); continue; }
+      if (!vcfg.enable) { diag(`  未启用`); continue; }
+      const iv = JSON.parse(vcfg.inputValues || "{}");
+      if ((iv.baseUrl || "").includes("localhost") || (iv.baseUrl || "").includes("127.0.0.1")) { diag(`  本地供应商，跳过`); continue; }
+      diag(`  已启用云端供应商`);
+
+      const code = vmod.getCode(vid);
+      if (!code || (!code.includes("textRequest") && !code.includes("exports.textRequest"))) { diag(`  无textRequest`); continue; }
+      diag(`  有textRequest`);
+
+      let textModel = models.find((m: any) => m.modelName === "deepseek-v4-flash");
+      if (!textModel) textModel = models.find((m: any) => m.type === "text" || !m.type);
+      if (!textModel) { diag(`  无文本模型`); continue; }
+      diag(`  选用: ${vid}:${textModel.modelName}`);
+
+      return `${vid}:${textModel.modelName}` as `${string}:${string}`;
+    } catch (e: any) { diag(`  异常: ${e.message}`); continue; }
+  }
+
+  diag(`无云端供应商可用，抛出错误`);
+  throw new Error(
+    "⚠️ 没有可用的 AI 服务。\n" +
+    "请选择以下方式之一：\n" +
+    "1. 启动本地 Qwen3 服务（控制台 → 启动 Qwen3）\n" +
+    "2. 在「设置 → 模型服务」中配置云端 DeepSeek 模型"
+  );
 }
 
 export default {
@@ -518,4 +570,5 @@ export default {
   Image: (key: `${string}:${string}`) => new AiImage(key),
   Video: (key: `${string}:${string}`) => new AiVideo(key),
   Audio: (key: `${string}:${string}`) => new AiAudio(key),
+  resolveFallbackTextModel,
 };
