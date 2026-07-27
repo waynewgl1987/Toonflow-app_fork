@@ -160,8 +160,8 @@ function logMsg(m) {
   const d = document.createElement("div");
   d.className = "log-entry new-row";
   d.innerHTML = '<span class="lt">'+t+'</span><span class="le svc">[SYS]</span><span class="ld">'+esc(m)+'</span>';
-  p.insertBefore(d, p.firstChild);
-  if(p.children.length>500) p.removeChild(p.lastChild);
+  p.appendChild(d); // 追加到底部，最新在最下面
+  if(p.children.length>500) p.removeChild(p.firstChild); // 超出时移除最旧的（顶部）
 }
 function toast(m, e) {
   const t = document.getElementById("toast");
@@ -263,7 +263,7 @@ async function loadGenLog() {
     const entries = d.data || [];
     if(entries.length !== lastCount) {
       lastCount = entries.length;
-      allEntries = entries.reverse();
+      allEntries = entries; // 保持时间正序（API 返回的就是旧→新）
       applyFilter();
     }
   } catch(e) { /* silent */ }

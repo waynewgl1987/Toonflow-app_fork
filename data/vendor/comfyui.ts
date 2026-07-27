@@ -408,7 +408,7 @@ async function submitAndWait(workflow: object, baseUrl: string, retries = 2): Pr
       return { completed: true, error: entry.status?.error_message || "ComfyUI 生成失败" };
     }
     return { completed: false };
-  }, 2000, 600000);
+  }, 2000, 2700000); // 轮询间隔 2 秒，超时 45 分钟
 
   // 0 秒完成重试逻辑（使用忙等待替代 setTimeout）
   if (pollResult.error === "__RETRY__" && retries > 0) {
