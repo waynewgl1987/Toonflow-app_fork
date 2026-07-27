@@ -337,9 +337,9 @@ export async function ensureService(fnName: string, vendorId: string): Promise<b
     }
 
     await svc.start();
-    const portReady = await waitForPort(svc.port, 120000);
+    const portReady = await waitForPort(svc.port, 180000);
     if (!portReady) {
-      throw new Error(`服务 ${svc.name} (端口 ${svc.port}) 启动超时（120秒），请手动检查服务状态`);
+      throw new Error(`服务 ${svc.name} (端口 ${svc.port}) 启动超时（180秒），请手动检查服务状态`);
     }
     logger.genLog({ event: "svc_auto_started", service: svc.name, port: svc.port });
   });

@@ -478,30 +478,33 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
   logger(`[ComfyUI Video] 使用自定义工作流`);
 
   // ── 检查必要参数 ──
-  // 提示词为空则抛出错误，避免生成无关视频
   if (!config.prompt || config.prompt.trim().length < 5) {
     throw new Error(
       `视频提示词为空或太短 (${(config.prompt||"").length} 字符)。\n` +
-      `请确保已生成分镜提示词后再生成视频。\n` +
-      `如果问题持续，请先在聊天中让 Agent 完成所有分镜步骤。`
+      `请确保已生成分镜提示词后再生成视频。`
     );
   }
 
+  // ── 记录传入的图片和提示词（用于调试） ──
+  const imgCount = config.imageBase64?.length || 0;
+  logger(`[ComfyUI Video] 收到 ${imgCount} 张参考图片`);
+  if (imgCount > 0) {
+    logger(`[ComfyUI Video] 第 1 张图片 base64 前 50 字: ${(config.imageBase64[0] || "").slice(0, 50)}`);
+  }
+  logger(`[ComfyUI Video] 提示词前 200 字: ${(config.prompt || "").slice(0, 200)}`);
+
   // ── 上传参考图片到 ComfyUI input 目录 ──
-  // 工作流中的 LoadImage 节点需要从磁盘加载文件，必须提前上传
   const uploadedFiles: string[] = [];
   const ts = Date.now();
-  const imageCount = config.imageBase64?.length || 0;
-  if (imageCount === 0) {
-    throw new Error(
-      `视频生成需要参考图片，但未提供任何图片。\n` +
-      `请先生成分镜图或上传参考图，再生成视频。`
-    );
-  }
-  logger(`[ComfyUI Video] 上传 ${imageCount} 张参考图片...`);
+  const imageCount = Math.max(1, imgCount);
   for (let i = 0; i < imageCount; i++) {
     let b64 = config.imageBase64?.[i] || "";
     const filename = `toonflow_video_${ts}_${i}.png`;
+    if (!b64) {
+      logger(`[ComfyUI Video] 图片 ${i} 为空，使用白色占位图`);
+      // 1x1 白色 PNG
+      b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+    }
     try {
       const cleanB64 = b64.includes(",") ? b64.split(",")[1] : b64;
       const imgBuffer = Buffer.from(cleanB64, "base64");
