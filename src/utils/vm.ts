@@ -41,6 +41,9 @@ export default function runCode(code: string, vendor?: Record<string, any>) {
     jsonwebtoken,
     crypto,
     setTimeout,
+    atob: (str: string) => Buffer.from(str, 'base64').toString('binary'),
+    btoa: (str: string) => Buffer.from(str, 'binary').toString('base64'),
+    Buffer,
   };
   if (vendor !== undefined) {
     sandbox.vendor = vendor;

@@ -129,11 +129,96 @@ function replacePrompt(obj: any, prompt: string): any {
   return obj;
 }
 
-/** 解析工作流 JSON 并注入 prompt */
-function prepareWorkflow(rawJson: string, prompt: string): object {
+/** 移除工作流中已知有 bug 的节点并修复引用 */
+function sanitizeWorkflow(workflow: Record<string, any>): Record<string, any> {
+  // 已知有问题的节点类型
+  const BUGGY_NODES = new Set(["LTX2SamplingPreviewOverride", "LTX2SamplingPreviewOverrrideKJ", "PreviewOverrideKJ"]);
+  
+  // 找出所有有问题的节点 ID
+  const badIds = new Set<string>();
+  for (const [id, node] of Object.entries(workflow)) {
+    if (BUGGY_NODES.has((node as any).class_type || "")) {
+      badIds.add(id);
+    }
+  }
+  if (badIds.size === 0) return workflow;
+  
+  logger(`[ComfyUI] 发现 ${badIds.size} 个有 bug 的预览节点: [${Array.from(badIds).join(", ")}]，正在移除...`);
+  
+  // 收集：每个输入源 → 需要修复的引用
+  // bad 节点的 inputs.model 格式为 ["sourceId", outputIndex]
+  // 需要找到所有引用 badId 的节点，将它们指向 bad 节点的输入源
+  const rewrites: Map<string, { fromId: string; toRef: [string, number] }[]> = new Map();
+  
+  for (const badId of badIds) {
+    const badNode = workflow[badId];
+    if (!badNode) continue;
+    // bad 节点的 model 输入: ["sourceId", outputIndex]
+    const modelInput = badNode.inputs?.model;
+    if (!Array.isArray(modelInput) || modelInput.length < 2) continue;
+    const [sourceId, outputIdx] = modelInput as [string, number];
+    
+    // 找到所有引用 badId 的节点
+    for (const [id, node] of Object.entries(workflow)) {
+      if (badIds.has(id)) continue;
+      const n = node as any;
+      if (!n.inputs) continue;
+      for (const [key, val] of Object.entries(n.inputs)) {
+        if (Array.isArray(val) && val.length >= 2 && val[0] === badId) {
+          // 这个节点的 key 输入引用了 badId
+          if (!rewrites.has(id)) rewrites.set(id, []);
+          rewrites.get(id)!.push({ fromId: badId, toRef: [sourceId, outputIdx] });
+        }
+      }
+    }
+  }
+  
+  // 执行重写
+  for (const [nodeId, refs] of rewrites) {
+    const node = workflow[nodeId];
+    if (!node) continue;
+    for (const ref of refs) {
+      for (const [key, val] of Object.entries(node.inputs)) {
+        if (Array.isArray(val) && val.length >= 2 && val[0] === ref.fromId) {
+          node.inputs[key] = ref.toRef;
+          logger(`[ComfyUI] 重写节点 ${nodeId}.${key}: [${ref.fromId}, ${val[1]}] → [${ref.toRef[0]}, ${ref.toRef[1]}]`);
+        }
+      }
+    }
+  }
+  
+  // 删除有 bug 的节点
+  for (const badId of badIds) {
+    delete workflow[badId];
+    logger(`[ComfyUI] 已移除问题节点: ${badId}`);
+  }
+  
+  return workflow;
+}
+
+/** 解析工作流 JSON 并注入 prompt，同时替换 LoadImage 节点为上传的文件名 */
+function prepareWorkflow(rawJson: string, prompt: string, uploadedFiles?: string[]): object {
   const parsed = JSON.parse(rawJson);
   const promptObj = parsed.prompt || parsed; // 兼容 { prompt: {...} } 或直接对象
-  return replacePrompt(promptObj, prompt);
+  let workflow = sanitizeWorkflow(promptObj);
+  workflow = replacePrompt(workflow, prompt);
+  
+  // 如果有上传的图片文件，替换所有 LoadImage 节点的 image 字段
+  if (uploadedFiles && uploadedFiles.length > 0) {
+    let fileIdx = 0;
+    for (const [nodeId, node] of Object.entries(workflow)) {
+      const n = node as any;
+      if (n.class_type === "LoadImage" && n.inputs?.image) {
+        // 替换为上传的文件名
+        const newFile = uploadedFiles[fileIdx % uploadedFiles.length];
+        logger(`[ComfyUI] 替换 LoadImage 节点 ${nodeId}: ${n.inputs.image} → ${newFile}`);
+        n.inputs.image = newFile;
+        fileIdx++;
+      }
+    }
+  }
+  
+  return workflow;
 }
 
 // 注意：VM2 沙箱无 Buffer/atob/Blob，无法动态上传参考图到 ComfyUI。
@@ -312,6 +397,14 @@ async function submitAndWait(workflow: object, baseUrl: string, retries = 2): Pr
       return { completed: true, error: "输出中没有找到媒体文件" };
     }
     if (entry.status?.status_str === "error") {
+      // 即使 ComfyUI 报 error（如预览回调崩溃），也可能已有生成结果
+      // 先检查 outputs 中是否有媒体文件
+      const outputs = entry.outputs || {};
+      const fileUrl = findFirstMedia(outputs, baseUrl);
+      if (fileUrl) {
+        logger(`[ComfyUI] 状态为 error 但已有输出文件，视为成功`);
+        return { completed: true, data: fileUrl };
+      }
       return { completed: true, error: entry.status?.error_message || "ComfyUI 生成失败" };
     }
     return { completed: false };
@@ -371,7 +464,6 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
   const customJson = vendor.inputValues.videoWorkflowJson || "";
 
   if (!customJson) {
-    // 尝试默认路径的 LTX2.3 工作流（file:// 机制在 host 侧处理）
     throw new Error(
       `ComfyUI 文生视频工作流未配置。请按以下步骤操作：\n` +
       `1. 打开 ComfyUI Web UI (${baseUrl})\n` +
@@ -385,12 +477,52 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
 
   logger(`[ComfyUI Video] 使用自定义工作流`);
 
+  // ── 上传参考图片到 ComfyUI input 目录 ──
+  // 工作流中的 LoadImage 节点需要从磁盘加载文件，必须提前上传
+  // 如果未提供图片，生成一个 1x1 透明占位 PNG
+  const uploadedFiles: string[] = [];
+  const ts = Date.now();
+  const imageCount = Math.max(1, config.imageBase64?.length || 0);
+  logger(`[ComfyUI Video] 处理 ${imageCount} 张参考图片...`);
+  for (let i = 0; i < imageCount; i++) {
+    let b64 = config.imageBase64?.[i] || "";
+    const filename = `toonflow_video_${ts}_${i}.png`;
+    try {
+      // 如果没有 base64 数据，生成一个 1x1 透明 PNG
+      if (!b64) {
+        // 1x1 透明 PNG 的 base64（极小占位图）
+        b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+      }
+      const cleanB64 = b64.includes(",") ? b64.split(",")[1] : b64;
+      const imgBuffer = Buffer.from(cleanB64, "base64");
+      // 用 Buffer 构造 multipart body（vm2 沙箱中 TextEncoder 不可用）
+      const boundary = `----ToonflowBoundary${Date.now()}`;
+      const header = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${filename}"\r\nContent-Type: image/png\r\n\r\n`);
+      const footer = Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n--${boundary}--\r\n`);
+      const merged = Buffer.concat([header, imgBuffer, footer]);
+      
+      const uploadRes = await fetch(`${baseUrl}/upload/image`, {
+        method: "POST",
+        headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+        body: merged,
+      });
+      if (uploadRes.ok) {
+        logger(`[ComfyUI Video] 图片 ${i} 上传成功: ${filename}`);
+        uploadedFiles.push(filename);
+      } else {
+        logger(`[ComfyUI Video] 图片 ${i} 上传失败: ${uploadRes.status}`);
+      }
+    } catch (e: any) {
+      logger(`[ComfyUI Video] 图片 ${i} 上传异常: ${e.message}`);
+    }
+  }
+
   // 将 duration/resolution 信息拼入 prompt
   let enhancedPrompt = config.prompt;
   if (config.duration) enhancedPrompt += ` Duration: ${config.duration}s.`;
   if (config.resolution) enhancedPrompt += ` Resolution: ${config.resolution}.`;
 
-  const workflow = prepareWorkflow(customJson, enhancedPrompt);
+  const workflow = prepareWorkflow(customJson, enhancedPrompt, uploadedFiles.length > 0 ? uploadedFiles : undefined);
   return await submitAndWait(workflow, baseUrl);
 };
 
