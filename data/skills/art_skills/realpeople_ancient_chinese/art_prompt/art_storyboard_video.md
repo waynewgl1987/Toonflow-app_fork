@@ -5,7 +5,9 @@
 | 模式 | 风格标签 |
 |------|----------|
 | **通用多参模式（英文）** | `Chinese period drama, photorealistic, cinematic, high contrast, ultra-fine detail` |
+| **通用多参模式（中文）** | `古风写实摄影，电影风格，强对比度，极致细节` |
 | **通用首尾帧模式（英文）** | `Chinese period drama, photorealistic, cinematic, high contrast, ultra-fine detail, shallow depth of field` |
+| **通用首尾帧模式（中文）** | `古风写实摄影，电影风格，强对比度，极致细节，浅景深` |
 | **Seedance 2.0（中文）** | `古风写实摄影，电影风格，强对比度，极致细节` |
 
 
