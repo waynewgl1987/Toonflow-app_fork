@@ -5,7 +5,9 @@
 | 模式 | 风格标签 |
 |------|----------|
 | **通用多参模式（英文）** | `mature urban romance anime, cel-shaded, cinematic lighting, cool tones, dramatic low-key shadows, clean line art` |
+| **通用多参模式（中文）** | `成熟都市言情动画，赛璐璐上色，电影级光影，冷色调，戏剧化低调光影，清晰线条` |
 | **通用首尾帧模式（英文）** | `mature urban romance anime, cel-shaded, cinematic lighting, cool tones, dramatic low-key shadows, clean line art, shallow depth of field` |
+| **通用首尾帧模式（中文）** | `成熟都市言情动画，赛璐璐上色，电影级光影，冷色调，戏剧化低调光影，清晰线条，浅景深` |
 | **Seedance 2.0（中文）** | `2D成熟都市言情动画，2D赛璐璐上色，电影级光影，冷色调，戏剧化低调光影，清晰线条` |
 
 
