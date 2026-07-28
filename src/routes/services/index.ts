@@ -133,12 +133,9 @@ async function waitForPortClosed(port: number, timeoutMs: number = 30000): Promi
   return false;
 }
 
-/** 判断服务是否处于"启动中"状态（端口未开但 60 秒内有启动记录） */
+/** 判断服务是否处于"启动中"状态：有启动时间戳且端口尚未就绪 */
 function isStarting(key: string): boolean {
-  const ts = startingTimestamps[key];
-  if (!ts) return false;
-  if (Date.now() - ts > 60000) { delete startingTimestamps[key]; return false; }
-  return true;
+  return !!startingTimestamps[key];
 }
 
 /**
@@ -160,6 +157,9 @@ async function checkComfyuiStartResult(port: number, logPath: string): Promise<v
       const elapsed = Math.round((Date.now() - startTime) / 1000);
 
       if (portOpen) {
+        // 端口已开 → 清除"启动中"标记，状态自动变为 running
+        delete startingTimestamps["comfyui"];
+
         // 端口已开，检查 API 是否就绪
         const apiReady = await checkApiReady(port);
         if (apiReady) {
@@ -186,7 +186,8 @@ async function checkComfyuiStartResult(port: number, logPath: string): Promise<v
       }
     }
 
-    // 超时
+    // 超时 → 清除"启动中"标记
+    delete startingTimestamps["comfyui"];
     const msg = `[ComfyUI] 启动超时（${maxWait / 1000} 秒），请检查日志: ${logPath}`;
     console.error(msg);
     try { fs.appendFileSync(logPath, `\n${msg}\n`); } catch {}
@@ -216,18 +217,23 @@ async function getServicesStatus() {
   const qwen3Running = qwen3PortBusy;
   const comfyRunning = comfyPortBusy;
 
+  const elapsed = (key: string) =>
+    startingTimestamps[key] ? Math.round((Date.now() - startingTimestamps[key]) / 1000) : 0;
+
   return {
     qwen3: {
       running: qwen3Running,
       status: qwen3Running ? "running" : isStarting("qwen3") ? "starting" : "stopped",
       port: CONFIG.qwen3.port,
       name: CONFIG.qwen3.name,
+      elapsed: elapsed("qwen3"),
     },
     comfyui: {
       running: comfyRunning,
       status: comfyRunning ? "running" : isStarting("comfyui") ? "starting" : "stopped",
       port: CONFIG.comfyui.port,
       name: CONFIG.comfyui.name,
+      elapsed: elapsed("comfyui"),
     },
     note: "5080 16GB 显存一次只能运行一个服务",
   };
@@ -606,8 +612,8 @@ router.post("/stop-all", async (_req: Request, res: Response) => {
     } catch {}
 
     runningProcesses = {};
-    startingTimestamps["qwen3"] = 0;
-    startingTimestamps["comfyui"] = 0;
+    delete startingTimestamps["qwen3"];
+    delete startingTimestamps["comfyui"];
     res.send({ success: true, message: "所有服务已停止" });
   } catch (e: any) {
     res.status(500).send({ success: false, message: e.message });
