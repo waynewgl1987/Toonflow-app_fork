@@ -14,13 +14,16 @@ export default router.post(
   }),
   async (req, res) => {
     const { projectId, scriptId, trackIds } = req.body;
-    const promptList = await u
+    const query = u
       .db("o_videoTrack")
       .where("projectId", projectId)
-      .where("scriptId", scriptId)
-      .whereIn("id", trackIds)
-      .whereIn("state", ["已完成", "生成失败"])
-      .select("id", "state", "reason", "prompt");
+      .where("scriptId", scriptId);
+    if (trackIds && trackIds.length > 0) {
+      query.whereIn("id", trackIds);
+    }
+    const promptList = await query
+      .select("id", "state", "reason", "prompt")
+      .orderBy("id", "asc");
     res.status(200).send(success(promptList));
   },
 );

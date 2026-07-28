@@ -115,50 +115,47 @@ export default router.post(
     );
 
     res.status(200).send(success(tasks.map((t) => ({ videoId: t.videoId, trackId: t.trackId }))));
-    for (const { videoId, videoPath, prompt, duration, images, trackId } of tasks) {
-      // 所有任务全部并发后台执行，完全不阻塞任何进程
+    // 批量提交：全部快速发给 ComfyUI 排队，每个之间间隔 500ms 避免冲击
+    const io: any = req.app.get("io");
+    const nsp = io ? io.of("/api/socket/productionAgent") : null;
+    const total = tasks.length;
+    if (nsp) nsp.emit("batch_queue_start", { projectId, total, trackIds: tasks.map((t: any) => t.trackId) });
+    for (let idx = 0; idx < tasks.length; idx++) {
+      const { videoId, videoPath, prompt, duration, images, trackId } = tasks[idx];
+      const current = idx + 1;
+      const labelPrompt = `【分镜${current}/${total}】${prompt}`;
+      // 间隔提交：第一个立刻发，后续每个间隔 500ms
+      if (idx > 0) await new Promise(r => setTimeout(r, 500));
+      if (nsp) nsp.emit("batch_queue_progress", { projectId, trackId, videoId, current, total, status: "submitted" });
+      logger.genLog({ event: "batch_video_submit", projectId, trackId, videoId, current, total });
+      // 全部并发提交到 ComfyUI，不等待完成
       const validImages = images.filter(Boolean);
-      logger.genLog({ event: "batch_video_b64_start", projectId, trackId, videoId, validCount: validImages.length });
-      const base64 = await Promise.all(
-        validImages.map(async (item: any) => {
-          const b64 = await u.oss.getImageBase64(item.path);
-          logger.genLog({ event: "batch_video_b64_item", projectId, trackId, path: item.path, b64Len: b64?.length || 0 });
-          return { base64: b64, type: item.sources == "audio" ? "audio" : "image" };
-        }),
-      );
-      const finalRefs = base64.filter(Boolean) as ReferenceList[];
-      logger.genLog({ event: "batch_video_ref_list", projectId, trackId, videoId, refCount: finalRefs.length });
-      const relatedObjects = { projectId, videoId, scriptId, type: "视频" };
-      const aiVideo = u.Ai.Video(model);
-      aiVideo
-        .run(
-          {
-            prompt,
-            referenceList: finalRefs,
-            mode: modeData.length > 0 ? modeData : mode,
-            duration,
-            aspectRatio: (ratio?.videoRatio as "16:9" | "9:16") || "16:9",
-            resolution,
-            audio,
-          },
-          {
-            projectId,
-            taskClass: "视频生成",
-            describe: "根据提示词生成视频",
-            relatedObjects: JSON.stringify(relatedObjects),
-          },
-        )
-        .then(async () => await aiVideo.save(videoPath))
-        .then(async () => await u.db("o_video").where("id", videoId).update({ state: "生成成功" }))
-        .catch(async (error: any) => {
-          await u
-            .db("o_video")
-            .where("id", videoId)
-            .update({
-              state: "生成失败",
-              errorReason: u.error(error).message,
-            });
-        });
+      Promise.resolve().then(async () => {
+        try {
+          const base64 = await Promise.all(
+            validImages.map(async (item: any) => {
+              const b64 = await u.oss.getImageBase64(item.path);
+              return { base64: b64, type: item.sources == "audio" ? "audio" : "image" };
+            }),
+          );
+          const finalRefs = base64.filter(Boolean) as ReferenceList[];
+          const relatedObjects = { projectId, videoId, scriptId, type: "视频" };
+          const aiVideo = u.Ai.Video(model);
+          await aiVideo.run(
+            { prompt: labelPrompt, referenceList: finalRefs, mode: modeData.length > 0 ? modeData : mode, duration, aspectRatio: (ratio?.videoRatio as "16:9" | "9:16") || "16:9", resolution, audio },
+            { projectId, taskClass: "视频生成", describe: "根据提示词生成视频", relatedObjects: JSON.stringify(relatedObjects) },
+          );
+          await aiVideo.save(videoPath);
+          await u.db("o_video").where("id", videoId).update({ state: "生成成功" });
+          if (nsp) nsp.emit("batch_queue_progress", { projectId, trackId, videoId, current, total, status: "success" });
+          logger.genLog({ event: "batch_video_done", projectId, trackId, videoId });
+        } catch (error: any) {
+          if (nsp) nsp.emit("batch_queue_progress", { projectId, trackId, videoId, current, total, status: "failed", error: u.error(error).message });
+          logger.genLog({ event: "batch_video_error", projectId, trackId, videoId, error: u.error(error).message });
+          await u.db("o_video").where("id", videoId).update({ state: "生成失败", errorReason: u.error(error).message });
+        }
+      });
     }
+    if (nsp) nsp.emit("batch_queue_complete", { projectId, total });
   },
 );
