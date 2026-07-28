@@ -130,7 +130,10 @@ export default router.post(
         // body.mode 为首尾帧相关 => 通用首尾帧模式
         fileName = "universalFirstAndLastFrameMode.md";
       } else if (typeof mode === "string" && mode.startsWith('["') && mode.endsWith('"]')) {
-        // 其他 => 通用多参模式
+        // JSON数组模式 => 通用多参模式
+        fileName = "universalMulti-parameterMode.md";
+      } else if (typeof mode === "string" && mode.length > 0) {
+        // 其他所有非空字符串模式（如 "text"）=> 也走通用多参模式
         fileName = "universalMulti-parameterMode.md";
       }
       if (fileName) {
