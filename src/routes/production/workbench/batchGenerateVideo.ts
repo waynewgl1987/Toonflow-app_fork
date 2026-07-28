@@ -110,20 +110,38 @@ export default router.post(
           videoTrackId: trackId,
         });
 
-        return { videoId, videoPath, prompt, duration, images, trackId };
+        // 获取分镜数据库 ID
+        const storyboardId = uploadData.find((item: any) => item.sources === "storyboard")?.id || trackId;
+        return { videoId, videoPath, prompt, duration, images, trackId, storyboardId };
       }),
     );
 
     res.status(200).send(success(tasks.map((t) => ({ videoId: t.videoId, trackId: t.trackId }))));
-    // 批量提交：全部快速发给 ComfyUI 排队，每个之间间隔 500ms 避免冲击
+    // 批量提交：全部快速发给 ComfyUI 排队
     const io: any = req.app.get("io");
     const nsp = io ? io.of("/api/socket/productionAgent") : null;
     const total = tasks.length;
+
+    // 收集所有标签（按提交顺序）
+    const labels = tasks.map((t: any) => {
+      const sbId = t.storyboardId ? t.storyboardId : t.trackId;
+      return `【分镜${sbId}】${(t.prompt || "").slice(0, 60)}`;
+    });
+    // 注册批处理标签到队列缓存
+    const batchKey = `batch_${projectId}_${Date.now()}`;
+    try {
+      await fetch(`http://127.0.0.1:${process.env.PORT || 10588}/api/other/comfyuiQueue/register-batch`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchKey, labels }),
+      });
+    } catch {}
+
     if (nsp) nsp.emit("batch_queue_start", { projectId, total, trackIds: tasks.map((t: any) => t.trackId) });
     for (let idx = 0; idx < tasks.length; idx++) {
-      const { videoId, videoPath, prompt, duration, images, trackId } = tasks[idx];
+      const { videoId, videoPath, prompt, duration, images, trackId, storyboardId } = tasks[idx];
       const current = idx + 1;
-      const labelPrompt = `【分镜${current}/${total}】${prompt}`;
+      const sbId = (typeof storyboardId === 'number') ? storyboardId : trackId;
+      const labelPrompt = `【分镜${sbId}】${prompt}`;
       // 间隔提交：第一个立刻发，后续每个间隔 500ms
       if (idx > 0) await new Promise(r => setTimeout(r, 500));
       if (nsp) nsp.emit("batch_queue_progress", { projectId, trackId, videoId, current, total, status: "submitted" });

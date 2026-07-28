@@ -1,18 +1,22 @@
 import express from "express";
 import http from "http";
-import { success, error } from "@/lib/responseFormat";
+import { success } from "@/lib/responseFormat";
 
 const router = express.Router();
 
-// 全局缓存: prompt_id → { text, time }
-const promptCache = new Map<string, { text: string; time: number }>();
-// 首次出现时间（不会随刷新重置）
-const firstSeen = new Map<string, number>();
+// 批处理注册: batchKey → { labels: string[], time: number }
+const batchRegistry = new Map<string, { labels: string[]; time: number }>();
 
-// 暴露注册接口：被其他模块调用
-export function registerPrompt(promptId: string, text: string) {
-  promptCache.set(promptId, { text: text.slice(0, 80), time: Date.now() });
-}
+// POST /api/other/comfyuiQueue/register-batch — 注册一批任务的标签
+router.post("/register-batch", (req, res) => {
+  const { batchKey, labels } = req.body || {};
+  if (batchKey && Array.isArray(labels)) {
+    batchRegistry.set(String(batchKey), { labels, time: Date.now() });
+    res.send(success({ ok: true }));
+  } else {
+    res.send(success({ ok: false }));
+  }
+});
 
 function comfyRequest(method: string, path: string, body?: any): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -37,16 +41,8 @@ function comfyRequest(method: string, path: string, body?: any): Promise<any> {
   });
 }
 
-// POST /api/other/comfyuiQueue/register — 注册 prompt 文本
-router.post("/register", async (req, res) => {
-  const { promptId, text } = req.body || {};
-  if (promptId && text) {
-    promptCache.set(String(promptId), { text: String(text).slice(0, 80), time: Date.now() });
-    res.send(success({ ok: true }));
-  } else {
-    res.send(error("缺少 promptId 或 text"));
-  }
-});
+// 存储启动时间（按 prompt_id）
+const firstSeen = new Map<string, number>();
 
 // GET /api/other/comfyuiQueue
 router.get("/", async (_req, res) => {
@@ -57,34 +53,38 @@ router.get("/", async (_req, res) => {
     const runningArr = q.queue_running ?? q.running ?? [];
     const pendingArr = q.queue_pending ?? q.queued ?? q.pending ?? [];
 
+    // 尝试匹配批处理标签（按提交顺序）
+    const allItems = [...(Array.isArray(runningArr) ? runningArr : []), ...(Array.isArray(pendingArr) ? pendingArr : [])];
+    let batchLabels: string[] = [];
+    if (allItems.length > 0) {
+      // 找最近注册的 batch
+      let latest: { labels: string[]; time: number } | undefined;
+      for (const v of batchRegistry.values()) {
+        if (!latest || v.time > latest.time) latest = v;
+      }
+      if (latest) batchLabels = latest.labels;
+    }
+
     const running = (Array.isArray(runningArr) ? runningArr : []).map((item: any, i: number) => {
       const promptId = Array.isArray(item) ? String(item[0] ?? "") : "";
-      const cached = promptId ? promptCache.get(promptId) : undefined;
-      // 记录首次出现时间（保持一致，不随刷新重置）
       const now = Date.now();
       if (promptId && !firstSeen.has(promptId)) firstSeen.set(promptId, now);
-      const started = firstSeen.get(promptId) || now;
+      const label = batchLabels[i] || `运行中 #${i + 1}`;
       return {
-        id: i, promptId,
-        prompt: cached?.text || `运行中 #${i + 1}`,
-        type: "running",
-        startedAt: started,
+        id: i, promptId, prompt: label, type: "running",
+        startedAt: firstSeen.get(promptId) || now,
       };
     });
 
     const queued = (Array.isArray(pendingArr) ? pendingArr : []).map((item: any, i: number) => {
-      const promptId = Array.isArray(item) ? String(item[0] ?? "") : "";
-      const cached = promptId ? promptCache.get(promptId) : undefined;
-      return {
-        id: running.length + i, promptId,
-        prompt: cached?.text || `排队 #${i + 1}`,
-        type: "queued",
-      };
+      const idx = running.length + i;
+      return { id: idx, prompt: batchLabels[idx] || `排队 #${i + 1}`, type: "queued" };
     });
 
-    // 清理 2 小时前的缓存
+    // 清理过期
     const cutoff = Date.now() - 7200000;
-    for (const [k, v] of promptCache) { if (v.time < cutoff) { promptCache.delete(k); firstSeen.delete(k); } }
+    for (const [k, v] of batchRegistry) { if (v.time < cutoff) batchRegistry.delete(k); }
+    for (const [k, v] of firstSeen) { if (v < cutoff) firstSeen.delete(k); }
 
     res.send(success({ running, queued, total: running.length + queued.length }));
   } catch (e: any) {
@@ -95,13 +95,13 @@ router.get("/", async (_req, res) => {
 // DELETE /api/other/comfyuiQueue
 router.delete("/", async (_req, res) => {
   try { await comfyRequest("POST", "/queue", { clear: true }); res.send(success({ cleared: true })); }
-  catch (e: any) { res.send(error(e.message)); }
+  catch (e: any) { res.send(success({ ok: false })); }
 });
 
 // POST /api/other/comfyuiQueue/interrupt
 router.post("/interrupt", async (_req, res) => {
   try { await comfyRequest("POST", "/interrupt"); res.send(success({ interrupted: true })); }
-  catch (e: any) { res.send(error(e.message)); }
+  catch (e: any) { res.send(success({ ok: false })); }
 });
 
 export default router;
