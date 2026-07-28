@@ -62,6 +62,7 @@ h1{font-size:20px;font-weight:600;margin-bottom:2px}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:10px 20px;font-size:13px;display:none;max-width:500px;text-align:center;z-index:100}
 .toast.show{display:block;animation:fadeIn .3s}
 @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes cqPulse{0%,100%{opacity:0.6}50%{opacity:1}}
 .count-info{font-size:11px;color:#555}
 /* responsive */
 @media(max-width:640px){.card-row{flex-direction:column}.log-entry{flex-wrap:wrap;gap:2px}.log-entry .lt{min-width:70px}.log-entry .le{min-width:80px}}
@@ -88,6 +89,22 @@ h1{font-size:20px;font-weight:600;margin-bottom:2px}
 <div class="actions" style="margin-bottom:12px">
   <button class="btn btn-out" onclick="refresh()">刷新状态</button>
   <button class="btn btn-dgr" onclick="stopAll()">停止所有</button>
+</div>
+
+<!-- ComfyUI 队列管理 -->
+<div id="queueSection" style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:12px;padding:12px 16px;margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+    <span style="font-size:14px;font-weight:600">ComfyUI 队列</span>
+    <span style="font-size:12px;color:#888" id="cqCount"></span>
+  </div>
+  <div id="cqContent" style="margin-bottom:8px;min-height:30px">
+    <div style="text-align:center;color:#666;padding:12px;font-size:13px">检测中...</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-dgr" id="cqInterruptBtn" onclick="cqInterrupt()" disabled>⏹ 中断当前</button>
+    <button class="btn btn-dgr" id="cqClearBtn" onclick="cqClear()" disabled>🗑 清空队列</button>
+    <button class="btn btn-out" onclick="cqRefresh()">🔄 刷新</button>
+  </div>
 </div>
 
 <!-- Settings -->
@@ -216,10 +233,11 @@ async function startSvc(id) {
   }
 }
 
-// 在 refresh 基础上增强：添加时间提示和超时提醒
+// 在 refresh 基础上增强：添加时间提示 + 刷新 ComfyUI 队列
 const origRefresh = refresh;
 refresh = function() {
   origRefresh();
+  cqRefresh();
   
   // 检查 comfyui 是否启动太久
   const sc = document.getElementById("sc");
@@ -227,7 +245,6 @@ refresh = function() {
   const isStarting = sc.textContent.includes("启动中");
   if (isStarting && window._startTime) {
     const elapsed = Math.round((Date.now() - window._startTime) / 1000);
-    // 给状态栏加耗时显示（避免修改服务器返回的纯文本）
     if (elapsed > 10 && elapsed % 15 === 0) {
       logMsg("ComfyUI 启动中... 已等待 "+elapsed+" 秒（首次启动约需 30-90 秒）");
     }
@@ -318,6 +335,95 @@ async function clearLog() {
   if(!confirm("确定清空日志文件？")) return;
   try { await fetch("/api/services/clear-log", {method:"POST"}); allEntries = []; applyFilter(); logMsg("日志已清空"); } catch(e) {}
 }
+
+// ===== ComfyUI Queue Management =====
+async function cqRefresh() {
+  var section = document.getElementById('queueSection');
+  var content = document.getElementById('cqContent');
+  var count = document.getElementById('cqCount');
+  var intBtn = document.getElementById('cqInterruptBtn');
+  var clrBtn = document.getElementById('cqClearBtn');
+  if (!section) return;
+  try {
+    var r = await fetch('/api/other/comfyuiQueue?_=' + Date.now());
+    var d = await r.json();
+    if (d.code !== 200 || !d.data) {
+      count.textContent = 'ComfyUI 未运行';
+      intBtn.disabled = true; clrBtn.disabled = true;
+      content.innerHTML = '<div style="text-align:center;padding:10px;color:#f87171;font-size:13px;">⚠ ComfyUI 未运行，请先启动服务</div>';
+      return;
+    }
+    var data = d.data;
+    var running = data.running || [];
+    var queued = data.queued || [];
+    count.textContent = '运行:' + running.length + ' 排队:' + queued.length;
+    intBtn.disabled = running.length === 0;
+    clrBtn.disabled = (running.length + queued.length) === 0;
+    var html = '';
+    if (running.length > 0) {
+      html += '<div style="font-size:13px;color:#22c55e;margin-bottom:4px;">▶ 运行中 (' + running.length + ')</div>';
+      running.forEach(function(t, idx) {
+        var started = t.startedAt || Date.now();
+        html += '<div style="background:#0f0f13;border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:13px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+        html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;">' + esc(t.prompt || '任务') + '</span>';
+        var sec = Math.floor((Date.now() - started) / 1000);
+        var min = Math.floor(sec / 60);
+        html += '<span style="color:#888;font-size:11px;margin-left:8px;white-space:nowrap;" class="cq-elapsed" data-started="' + started + '">⏱ ' + (min > 0 ? min + '分' + (sec % 60) + '秒' : sec + '秒') + '</span>';
+        html += '</div>';
+        html += '<div style="height:3px;background:#2a2a3e;border-radius:2px;margin-top:4px;overflow:hidden;">';
+        html += '<div style="height:100%;width:0%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border-radius:2px;animation:cqPulse 2s ease-in-out infinite;"></div>';
+        html += '</div>';
+        html += '</div>';
+      });
+    }
+    if (queued.length > 0) {
+      html += '<div style="font-size:13px;color:#eab308;margin-top:4px;margin-bottom:4px;">⏳ 排队中 (' + queued.length + ')</div>';
+      queued.forEach(function(t) {
+        html += '<div style="background:#0f0f13;border-radius:6px;padding:6px 10px;margin-bottom:4px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">';
+        html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(t.prompt || '未知') + '</span></div>';
+      });
+    }
+    if (running.length === 0 && queued.length === 0) {
+      html += '<div style="text-align:center;padding:10px;color:#666;font-size:13px;">队列空闲 ✓</div>';
+    }
+    content.innerHTML = html;
+  } catch(e) {
+    content.innerHTML = '<div style="text-align:center;padding:10px;color:#f87171;font-size:13px;">连接失败</div>';
+  }
+}
+async function cqInterrupt() {
+  await fetch('/api/other/comfyuiQueue/interrupt', { method: 'POST' });
+  cqRefresh();
+}
+async function cqClear() {
+  await fetch('/api/other/comfyuiQueue', { method: 'DELETE' });
+  cqRefresh();
+}
+
+// ===== Auto Refresh =====
+// 增强 refresh: 同时刷新队列
+var _origRefresh = refresh;
+refresh = function() {
+  _origRefresh();
+  cqRefresh();
+};
+
+// 页面自动刷新（每 5 秒刷新状态 + 队列）
+setInterval(function() {
+  refresh();
+}, 5000);
+// 任务耗时计数器（每秒更新）
+setInterval(function() {
+  document.querySelectorAll('.cq-elapsed').forEach(function(el) {
+    var started = parseInt(el.getAttribute('data-started') || '0');
+    if (started) {
+      var sec = Math.floor((Date.now() - started) / 1000);
+      var min = Math.floor(sec / 60);
+      el.textContent = '⏱ ' + (min > 0 ? min + '分' + (sec % 60) + '秒' : sec + '秒');
+    }
+  });
+}, 1000);
 
 // ===== Init =====
 refresh();
