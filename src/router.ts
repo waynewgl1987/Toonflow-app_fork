@@ -174,6 +174,7 @@ import route170 from "./routes/task/getTaskApi";
 import route171 from "./routes/task/getTaskCategories";
 import route172 from "./routes/task/taskDetails";
 import route173 from "./routes/test/test";
+import route174 from "./routes/other/comfyuiQueue";
 
 export default async (app: Express) => {
   app.use("/api/agents/clearMemory", route1);
@@ -349,4 +350,5 @@ export default async (app: Express) => {
   app.use("/api/task/getTaskCategories", route171);
   app.use("/api/task/taskDetails", route172);
   app.use("/api/test/test", route173);
+  app.use("/api/other/comfyuiQueue", route174);
 }

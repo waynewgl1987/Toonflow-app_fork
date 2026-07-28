@@ -81,11 +81,13 @@ const vendor: VendorConfig = {
     { key: "baseUrl", label: "ComfyUI 地址", type: "url", required: true, placeholder: "http://localhost:8188" },
     { key: "imageWorkflowJson", label: "文生图工作流 JSON", type: "text", required: false, placeholder: "必填：粘贴 Save (API Format) 的 JSON 或 file:// 路径" },
     { key: "videoWorkflowJson", label: "文生视频工作流 JSON", type: "text", required: false, placeholder: "必填：粘贴 Save (API Format) 的 JSON 或 file:// 路径" },
+    { key: "backendHost", label: "Toonflow 后端地址", type: "text", required: false, placeholder: "127.0.0.1:10588" },
   ],
   inputValues: {
     baseUrl: "http://localhost:8188",
     imageWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/image_z_image_turbo.json",
     videoWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_singleVideo.json",
+    backendHost: "127.0.0.1:10588",
   },
   models: [
     {
@@ -317,7 +319,7 @@ function findFirstMedia(outputs: Record<string, any>, baseUrl: string): string |
 }
 
 /** 提交工作流到 ComfyUI 并轮询，返回结果 URL（host 负责转 base64） */
-async function submitAndWait(workflow: object, baseUrl: string, retries = 2): Promise<string> {
+async function submitAndWait(workflow: object, baseUrl: string, retries = 2, promptText = ""): Promise<string> {
   // 标准化节点 ID（将 "57:30" 转为简单整数，规避 ComfyUI v0.18+ 的兼容问题）
   workflow = normalizeNodeIds(workflow);
 
@@ -373,6 +375,18 @@ async function submitAndWait(workflow: object, baseUrl: string, retries = 2): Pr
   const submitData = await submitRes.json();
   const promptId = submitData.prompt_id;
   logger(`[ComfyUI] 任务 ID: ${promptId}`);
+  // 注册 prompt 到缓存（供队列面板显示）
+  if (promptId && promptText) {
+    try {
+      const backendHost = vendor.inputValues?.backendHost || "127.0.0.1:10588";
+      await fetch(`http://${backendHost}/api/other/comfyuiQueue/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promptId: String(promptId), text: submittedPrompt }),
+      });
+      logger(`[ComfyUI] 已注册 prompt 缓存: ${promptText.slice(0, 60)}`);
+    } catch(e) {}
+  }
 
   const startTime = Date.now();
 
@@ -425,7 +439,7 @@ async function submitAndWait(workflow: object, baseUrl: string, retries = 2): Pr
   if (pollResult.error === "__RETRY__" && retries > 0) {
     logger(`[ComfyUI] 重试第 ${3 - retries + 1} 次...`);
     await sleep(3000);
-    return submitAndWait(workflow, baseUrl, retries - 1);
+    return submitAndWait(workflow, baseUrl, retries - 1, promptText);
   }
 
   if (pollResult.error) {
@@ -572,10 +586,12 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
 
   const workflow = prepareWorkflow(customJson, enhancedPrompt, uploadedFiles.length > 0 ? uploadedFiles : undefined);
   // 记录工作流中 CLIPTextEncode 节点的最终 prompt 内容，确认替换成功
+  let submittedPrompt = "";
   for (const [nodeId, node] of Object.entries(workflow)) {
     const n = node as any;
     if (n.class_type === "CLIPTextEncode" && n.inputs?.text) {
       const text = String(n.inputs.text);
+      submittedPrompt = text;
       logger(`[ComfyUI] CLIPTextEncode 节点 ${nodeId} 最终文本 (前100字): ${text.slice(0, 100)}`);
       if (text.length > 100) logger(`[ComfyUI] CLIPTextEncode 节点 ${nodeId} 最终文本 (后50字): ${text.slice(-50)}`);
     }
@@ -587,7 +603,7 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
       logger(`[ComfyUI] LoadImage 节点 ${nodeId} 最终图片: ${n.inputs?.image || "空"}`);
     }
   }
-  return await submitAndWait(workflow, baseUrl);
+  return await submitAndWait(workflow, baseUrl, undefined, submittedPrompt);
 };
 
 // ============================================================
