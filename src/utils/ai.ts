@@ -147,7 +147,7 @@ async function getVendorTemplateFn(fnName: FnName, modelName: `${string}:${strin
     // 后备方案：如果数据库未配置工作流，尝试读取默认路径的 API 格式文件
     const defaultWorkflows: Record<string, string> = {
       imageWorkflowJson: path.join(process.cwd(), "ComfyUI", "workflows", "image_z_image_turbo.json"),
-      videoWorkflowJson: path.join(process.cwd(), "ComfyUI", "workflows", "LTX2.3_frameVideo.json"),
+      videoWorkflowJson: path.join(process.cwd(), "ComfyUI", "workflows", "LTX2.3_singleVideo.json"),
     };
     for (const [key, defaultPath] of Object.entries(defaultWorkflows)) {
       if (!inputValues[key] || inputValues[key] === "{}" || (typeof inputValues[key] === "string" && inputValues[key].startsWith("file://"))) {
@@ -283,10 +283,18 @@ class AiText {
 
 function referenceList2imageBase642(id: string, input: any) {
   const version = u.vendor.getVendor(id).version;
+  const refCount = input.referenceList?.length || 0;
+  logger.genLog({ event: "video_ref2b64", vendorId: id, version, refCount, hasRef: !!input.referenceList });
   if (!version || isNaN(parseFloat(version)) || parseFloat(version) < 2.0) {
-    input.imageBase64 = input.referenceList.map((item: any) => item.base64);
+    const b64List = input.referenceList?.map((item: any) => {
+      const b64 = item?.base64 || "";
+      return { type: item?.type, len: b64.length, preview: b64.slice(0, 30) };
+    }) || [];
+    input.imageBase64 = input.referenceList?.map((item: any) => item.base64) || [];
+    logger.genLog({ event: "video_ref2b64_result", vendorId: id, copied: true, imageCount: input.imageBase64.length, details: b64List });
     return input;
   }
+  logger.genLog({ event: "video_ref2b64_result", vendorId: id, copied: false, reason: `version=${version} >= 2.0` });
   return input;
 }
 
@@ -408,6 +416,7 @@ class AiVideo {
       const exec = async (mn: `${string}:${string}`) => {
         const fn = await getVendorTemplateFn("videoRequest", mn);
         await referenceList2imageBase642(mn.split(/:(.+)/)[0], input);
+        logger.genLog({ event: "video_vendor_call", recordId: this.recordId, modelName: mn, imgCount: input.imageBase64?.length || 0, imgSizes: (input.imageBase64 || []).map((b: string) => (b || "").length) });
 
         this.result = await fn(input);
 

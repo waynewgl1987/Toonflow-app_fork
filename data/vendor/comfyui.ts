@@ -73,7 +73,7 @@ const vendor: VendorConfig = {
 **已配置的工作流文件（均含 \`__PROMPT__\` 占位符）：**
 
 文生图: \`file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_Image.json\`
-文生视频: \`file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_frameVideo.json\`
+文生视频: \`file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_singleVideo.json\`
 
 **注意：** ComfyUI 不支持文本请求，Agent 配置中文本模型务必指向 openai（Qwen3）`,
   icon: "",
@@ -85,7 +85,7 @@ const vendor: VendorConfig = {
   inputValues: {
     baseUrl: "http://localhost:8188",
     imageWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/image_z_image_turbo.json",
-    videoWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_frameVideo.json",
+    videoWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_singleVideo.json",
   },
   models: [
     {
@@ -206,16 +206,27 @@ function prepareWorkflow(rawJson: string, prompt: string, uploadedFiles?: string
   // 如果有上传的图片文件，替换所有 LoadImage 节点的 image 字段
   if (uploadedFiles && uploadedFiles.length > 0) {
     let fileIdx = 0;
+    let loadImageCount = 0;
     for (const [nodeId, node] of Object.entries(workflow)) {
       const n = node as any;
-      if (n.class_type === "LoadImage" && n.inputs?.image) {
-        // 替换为上传的文件名
-        const newFile = uploadedFiles[fileIdx % uploadedFiles.length];
-        logger(`[ComfyUI] 替换 LoadImage 节点 ${nodeId}: ${n.inputs.image} → ${newFile}`);
-        n.inputs.image = newFile;
-        fileIdx++;
+      if (n.class_type === "LoadImage") {
+        loadImageCount++;
+        if (n.inputs?.image) {
+          const newFile = uploadedFiles[fileIdx % uploadedFiles.length];
+          logger(`[ComfyUI] 替换 LoadImage 节点 ${nodeId} (${n._meta?.title || "?"}): "${n.inputs.image}" → "${newFile}"`);
+          n.inputs.image = newFile;
+          fileIdx++;
+        } else {
+          logger(`[ComfyUI] ⚠️ LoadImage 节点 ${nodeId} 没有 image 输入，跳过`);
+        }
       }
     }
+    logger(`[ComfyUI] LoadImage 扫描完成: 共 ${loadImageCount} 个节点，替换了 ${fileIdx} 个`);
+    if (loadImageCount === 0) {
+      logger(`[ComfyUI] ⚠️ 工作流中没有找到任何 LoadImage 节点！图片无法传入模型`);
+    }
+  } else {
+    logger(`[ComfyUI] ⚠️ 没有上传文件，LoadImage 节点保持原样`);
   }
   
   return workflow;
@@ -487,9 +498,15 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
 
   // ── 记录传入的图片和提示词（用于调试） ──
   const imgCount = config.imageBase64?.length || 0;
+  const imgSizes = (config.imageBase64 || []).map((b: string) => (b || "").length);
+  logger(`[ComfyUI Video] ═════════ 图片接收报告 ═════════`);
   logger(`[ComfyUI Video] 收到 ${imgCount} 张参考图片`);
+  logger(`[ComfyUI Video] 各图 base64 长度: ${JSON.stringify(imgSizes)}`);
   if (imgCount > 0) {
-    logger(`[ComfyUI Video] 第 1 张图片 base64 前 50 字: ${(config.imageBase64[0] || "").slice(0, 50)}`);
+    logger(`[ComfyUI Video] 第 1 张 base64 前 50 字: ${(config.imageBase64[0] || "").slice(0, 50)}`);
+    logger(`[ComfyUI Video] 第 1 张 base64 后 50 字: ${(config.imageBase64[0] || "").slice(-50)}`);
+  } else {
+    logger(`[ComfyUI Video] ⚠️ 没有收到任何参考图片！将使用白色占位图`);
   }
   logger(`[ComfyUI Video] 提示词前 200 字: ${(config.prompt || "").slice(0, 200)}`);
 
@@ -520,22 +537,56 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
         body: merged,
       });
       if (uploadRes.ok) {
-        logger(`[ComfyUI Video] 图片 ${i} 上传成功: ${filename}`);
+        logger(`[ComfyUI Video] 图片 ${i} 上传成功: ${filename} (base64 长度: ${(b64 || "").length})`);
         uploadedFiles.push(filename);
       } else {
-        logger(`[ComfyUI Video] 图片 ${i} 上传失败: ${uploadRes.status}`);
+        const errText = await uploadRes.text().catch(() => "");
+        logger(`[ComfyUI Video] 图片 ${i} 上传失败: ${uploadRes.status} ${errText.slice(0, 200)}`);
       }
     } catch (e: any) {
       logger(`[ComfyUI Video] 图片 ${i} 上传异常: ${e.message}`);
     }
   }
 
+  // ── 报告上传结果 ──
+  logger(`[ComfyUI Video] 上传完成: 成功 ${uploadedFiles.length}/${imgCount} 张`);
+  if (uploadedFiles.length > 0) {
+    logger(`[ComfyUI Video] 上传的文件: ${JSON.stringify(uploadedFiles)}`);
+  }
+
+  // ── 验证图片上传结果：有参考图但无一成功上传 → 抛错阻止无声失败 ──
+  if (imgCount > 0 && uploadedFiles.length === 0) {
+    throw new Error(
+      `ComfyUI 图片上传失败（${imgCount} 张参考图全部上传失败）。\n` +
+      `请检查：\n` +
+      `1. ComfyUI 是否已正确启动（控制台 → 查看 ComfyUI 状态）\n` +
+      `2. ComfyUI 地址是否正确（设置 → 模型服务 → ComfyUI → 地址）\n` +
+      `3. 如果问题持续，请到控制面板查看 ComfyUI 日志`
+    );
+  }
+
   // 将 duration/resolution 信息拼入 prompt
   let enhancedPrompt = config.prompt;
-  if (config.duration) enhancedPrompt += ` Duration: ${config.duration}s.`;
-  if (config.resolution) enhancedPrompt += ` Resolution: ${config.resolution}.`;
+  if (config.duration) enhancedPrompt += `，时长：${config.duration}秒`;
+  if (config.resolution) enhancedPrompt += `，分辨率：${config.resolution}`;
 
   const workflow = prepareWorkflow(customJson, enhancedPrompt, uploadedFiles.length > 0 ? uploadedFiles : undefined);
+  // 记录工作流中 CLIPTextEncode 节点的最终 prompt 内容，确认替换成功
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    const n = node as any;
+    if (n.class_type === "CLIPTextEncode" && n.inputs?.text) {
+      const text = String(n.inputs.text);
+      logger(`[ComfyUI] CLIPTextEncode 节点 ${nodeId} 最终文本 (前100字): ${text.slice(0, 100)}`);
+      if (text.length > 100) logger(`[ComfyUI] CLIPTextEncode 节点 ${nodeId} 最终文本 (后50字): ${text.slice(-50)}`);
+    }
+  }
+  // 记录 LoadImage 节点的最终图片引用
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    const n = node as any;
+    if (n.class_type === "LoadImage") {
+      logger(`[ComfyUI] LoadImage 节点 ${nodeId} 最终图片: ${n.inputs?.image || "空"}`);
+    }
+  }
   return await submitAndWait(workflow, baseUrl);
 };
 

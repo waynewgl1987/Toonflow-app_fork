@@ -180,14 +180,17 @@ async function refresh() {
   const d = r.data;
   document.getElementById("cards").innerHTML = card("qwen3", d.qwen3) + card("comfyui", d.comfyui);
   const sq = d.qwen3, sc = d.comfyui;
-  document.getElementById("sq").innerHTML = '<span class="dot '+(sq.status==="running"?"green":sq.status==="starting"?"yellow":"red")+'"></span> Qwen3: '+({running:"on",starting:"启动中...",stopped:"off"})[sq.status];
-  document.getElementById("sc").innerHTML = '<span class="dot '+(sc.status==="running"?"green":sc.status==="starting"?"yellow":"red")+'"></span> ComfyUI: '+({running:"on",starting:"启动中...",stopped:"off"})[sc.status];
+  const fmtElapsed = (s) => s.status==="starting" ? " ("+s.elapsed+"s)" : (s.status==="running" && s.elapsed ? " ("+s.elapsed+"s)" : "");
+  document.getElementById("sq").innerHTML = '<span class="dot '+(sq.status==="running"?"green":sq.status==="starting"?"yellow":"red")+'"></span> Qwen3: '+({running:"on"+fmtElapsed(sq),starting:"启动中..."+fmtElapsed(sq),stopped:"off"})[sq.status];
+  document.getElementById("sc").innerHTML = '<span class="dot '+(sc.status==="running"?"green":sc.status==="starting"?"yellow":"red")+'"></span> ComfyUI: '+({running:"on"+fmtElapsed(sc),starting:"启动中..."+fmtElapsed(sc),stopped:"off"})[sc.status];
   logMsg("服务状态 | Qwen3="+({running:"运行",starting:"启动中",stopped:"停止"})[sq.status]+" ComfyUI="+({running:"运行",starting:"启动中",stopped:"停止"})[sc.status]);
 }
 function card(id, s) {
   const st = s.status||(s.running?"running":"stopped");
+  const el = s.elapsed ? " ("+s.elapsed+"s)" : "";
+  const label = ({running:"运行中",starting:"启动中...",stopped:"已停止"})[st] + (st==="starting"?el:"");
   return '<div class="card"><div class="card-h"><div><div class="card-name">'+s.name+'</div><div class="card-desc">端口 '+s.port+'</div></div></div>'+
-    '<div class="card-status"><span class="dot '+(st==="running"?"green":st==="starting"?"yellow":"red")+'"></span> '+({running:"运行中",starting:"启动中...",stopped:"已停止"})[st]+'</div>'+
+    '<div class="card-status"><span class="dot '+(st==="running"?"green":st==="starting"?"yellow":"red")+'"></span> '+label+'</div>'+
     '<div>'+(st==="running"?'<button class="btn btn-dgr" onclick="stopSvc(\''+id+'\')">停止</button>':'<button class="btn btn-pri" onclick="startSvc(\''+id+'\')">启动</button>')+'</div></div>';
 }
 async function startSvc(id) {
