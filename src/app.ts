@@ -107,6 +107,7 @@ export default function startServe(randomPort: Boolean = false) {
 
   const io = new Server(server, { cors: { origin: "*" }, serveClient: false });
   socketInit(io);
+  app.set("io", io); // 暴露给路由处理器
   phase("Socket.IO 初始化完成");
 
   if (process.env.NODE_ENV == "dev") { buildRoute(); }
@@ -217,6 +218,25 @@ export default function startServe(randomPort: Boolean = false) {
   // 直接注册路由（不使用 await，避免 esbuild bundle 下 Promise 挂起）
   registerRoutes(app);
   phase("API 路由注册完成");
+
+  // 启动时清理：将上次未完成的任务标记为"生成失败"
+  (async () => {
+    try {
+      const staleVideos = await u.db("o_video").where("state", "生成中").update({
+        state: "生成失败",
+        errorReason: "服务重启，生成中断",
+      });
+      const staleTracks = await u.db("o_videoTrack").where("state", "生成中").update({
+        state: "生成失败",
+        reason: "服务重启，生成中断",
+      });
+      if (staleVideos > 0 || staleTracks > 0) {
+        console.log(`[启动清理] 标记未完成任务: ${staleVideos} 个视频, ${staleTracks} 个轨道 -> 生成失败`);
+      }
+    } catch(e: any) {
+      console.log("[启动清理] 警告:", e.message);
+    }
+  })();
 
   // 404 处理
   app.use((_, res, next: NextFunction) => {
