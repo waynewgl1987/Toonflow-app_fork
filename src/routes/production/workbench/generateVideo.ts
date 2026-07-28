@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
 import { ReferenceList } from "@/utils/ai";
+import logger from "@/logger";
 const router = express.Router();
 
 type Type = "imageReference" | "startImage" | "endImage" | "videoReference" | "audioReference";
@@ -49,11 +50,30 @@ export default router.post(
     //获取生成视频比例
     const ratio = await u.db("o_project").select("videoRatio").where("id", projectId).first();
     const videoPath = `/${projectId}/video/${uuidv4()}.mp4`; //视频保存路径
+
+    // ── 如果前端没传 uploadData，自动从数据库补图 ──
+    let resolvedUploadData = uploadData;
+    if (!resolvedUploadData || resolvedUploadData.length === 0) {
+      const fallbackStoryboards = await u
+        .db("o_storyboard")
+        .where("trackId", trackId)
+        .where("projectId", projectId)
+        .where("shouldGenerateImage", 1)
+        .select("id");
+      if (fallbackStoryboards.length > 0) {
+        resolvedUploadData = fallbackStoryboards.map((s: any) => ({ id: s.id, sources: "storyboard" }));
+        logger.genLog({ event: "video_uploaddata_fallback", projectId, trackId, reason: "前端未传uploadData", found: fallbackStoryboards.length, ids: fallbackStoryboards.map((s: any) => s.id) });
+      } else {
+        logger.genLog({ event: "video_uploaddata_fallback", projectId, trackId, reason: "前端未传uploadData，且未找到track关联分镜", found: 0 });
+      }
+    }
+
     //查询出图片数据
     const images = await Promise.all(
-      uploadData.map(async (item: UploadItem) => {
+      resolvedUploadData.map(async (item: UploadItem) => {
         if (item.sources === "storyboard") {
           const filePath = await u.db("o_storyboard").where("id", item.id).select("filePath").first();
+          logger.genLog({ event: "video_image_query", projectId, detail: `storyboard id=${item.id} filePath=${filePath?.filePath || "NULL"}` });
           return { path: filePath?.filePath, sources: "storyBoard" };
         }
         if (item.sources === "assets") {
@@ -63,15 +83,19 @@ export default router.post(
             .leftJoin("o_image", "o_assets.imageId", "o_image.id")
             .select("o_image.filePath", "o_image.type")
             .first();
+          logger.genLog({ event: "video_image_query", projectId, detail: `assets id=${item.id} sources=${item.sources} filePath=${filePath?.filePath || "NULL"} type=${filePath?.type || "NULL"}` });
           return { path: filePath?.filePath, sources: filePath.type };
         }
       }),
     );
     //把images里面的图片转成base64格式
+    const validImages = images.filter(Boolean);
+    logger.genLog({ event: "video_image_loaded", projectId, total: images.length, valid: validImages.length, details: validImages.map((i: any) => `path=${i.path} size=0`).join(" | ") });
     const base64 = await Promise.all(
-      images.map(async (item) => {
-        if (!item) return null;
-        return { base64: await u.oss.getImageBase64(item.path), type: item.sources == "audio" ? "audio" : "image" };
+      validImages.map(async (item: any) => {
+        const b64 = await u.oss.getImageBase64(item.path);
+        logger.genLog({ event: "video_image_base64", projectId, path: item.path, length: b64?.length || 0, type: item.sources == "audio" ? "audio" : "image" });
+        return { base64: b64, type: item.sources == "audio" ? "audio" : "image" };
       }),
     );
     //新增
@@ -90,12 +114,14 @@ export default router.post(
       scriptId,
       type: "视频",
     };
+    const finalRefs = base64.filter(Boolean) as ReferenceList[];
+    logger.genLog({ event: "video_ref_list", projectId, trackId, refCount: finalRefs.length, promptLen: prompt?.length || 0, promptStart: (prompt || "").slice(0, 80) });
     const aiVideo = u.Ai.Video(model);
     aiVideo
       .run(
         {
           prompt,
-          referenceList: base64.filter(Boolean) as ReferenceList[],
+          referenceList: finalRefs,
           mode: modeData.length > 0 ? modeData : mode,
           duration,
           aspectRatio: (ratio?.videoRatio as "16:9" | "9:16") || "16:9",

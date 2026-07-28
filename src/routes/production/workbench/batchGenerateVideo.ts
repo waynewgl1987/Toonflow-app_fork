@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
 import { ReferenceList } from "@/utils/ai";
+import logger from "@/logger";
 const router = express.Router();
 
 type Type = "imageReference" | "startImage" | "endImage" | "videoReference" | "audioReference";
@@ -58,13 +59,30 @@ export default router.post(
     // 为每个 track 预处理数据并插入数据库，返回任务列表
     const tasks = await Promise.all(
       (trackData as { uploadData: { id: number; sources: string }[]; trackId: number; prompt: string; duration: number }[]).map(async (track) => {
-        const { uploadData, trackId, prompt, duration } = track;
+        let { uploadData, trackId, prompt, duration } = track;
+
+        // ── 如果前端没传 uploadData，自动从数据库补图 ──
+        if (!uploadData || uploadData.length === 0) {
+          const fallbackStoryboards = await u
+            .db("o_storyboard")
+            .where("trackId", trackId)
+            .where("projectId", projectId)
+            .where("shouldGenerateImage", 1)
+            .select("id");
+          if (fallbackStoryboards.length > 0) {
+            uploadData = fallbackStoryboards.map((s: any) => ({ id: s.id, sources: "storyboard" }));
+            logger.genLog({ event: "batch_video_uploaddata_fallback", projectId, trackId, found: fallbackStoryboards.length, ids: fallbackStoryboards.map((s: any) => s.id) });
+          } else {
+            logger.genLog({ event: "batch_video_uploaddata_fallback", projectId, trackId, found: 0 });
+          }
+        }
 
         // 查询出图片数据
         const images = await Promise.all(
           uploadData.map(async (item) => {
             if (item.sources === "storyboard") {
               const filePath = await u.db("o_storyboard").where("id", item.id).select("filePath").first();
+              logger.genLog({ event: "batch_video_img_query", projectId, trackId, detail: `storyboard id=${item.id} filePath=${filePath?.filePath || "NULL"}` });
               return { path: filePath?.filePath, sources: "storyBoard" };
             }
             if (item.sources === "assets") {
@@ -74,10 +92,13 @@ export default router.post(
                 .leftJoin("o_image", "o_assets.imageId", "o_image.id")
                 .select("o_image.filePath", "o_image.type")
                 .first();
+              logger.genLog({ event: "batch_video_img_query", projectId, trackId, detail: `assets id=${item.id} filePath=${filePath?.filePath || "NULL"}` });
               return { path: filePath?.filePath, sources: filePath.type };
             }
           }),
         );
+        const validImgCount = images.filter(Boolean).length;
+        logger.genLog({ event: "batch_video_img_loaded", projectId, trackId, total: images.length, valid: validImgCount });
 
         const videoPath = `/${projectId}/video/${uuidv4()}.mp4`;
         const [videoId] = await u.db("o_video").insert({
@@ -94,21 +115,26 @@ export default router.post(
     );
 
     res.status(200).send(success(tasks.map((t) => ({ videoId: t.videoId, trackId: t.trackId }))));
-    for (const { videoId, videoPath, prompt, duration, images } of tasks) {
+    for (const { videoId, videoPath, prompt, duration, images, trackId } of tasks) {
       // 所有任务全部并发后台执行，完全不阻塞任何进程
+      const validImages = images.filter(Boolean);
+      logger.genLog({ event: "batch_video_b64_start", projectId, trackId, videoId, validCount: validImages.length });
       const base64 = await Promise.all(
-        images.map(async (item) => {
-          if (!item) return null;
-          return { base64: await u.oss.getImageBase64(item.path), type: item.sources == "audio" ? "audio" : "image" };
+        validImages.map(async (item: any) => {
+          const b64 = await u.oss.getImageBase64(item.path);
+          logger.genLog({ event: "batch_video_b64_item", projectId, trackId, path: item.path, b64Len: b64?.length || 0 });
+          return { base64: b64, type: item.sources == "audio" ? "audio" : "image" };
         }),
       );
+      const finalRefs = base64.filter(Boolean) as ReferenceList[];
+      logger.genLog({ event: "batch_video_ref_list", projectId, trackId, videoId, refCount: finalRefs.length });
       const relatedObjects = { projectId, videoId, scriptId, type: "视频" };
       const aiVideo = u.Ai.Video(model);
       aiVideo
         .run(
           {
             prompt,
-            referenceList: base64.filter(Boolean) as ReferenceList[],
+            referenceList: finalRefs,
             mode: modeData.length > 0 ? modeData : mode,
             duration,
             aspectRatio: (ratio?.videoRatio as "16:9" | "9:16") || "16:9",
