@@ -5,7 +5,9 @@
 | 模式 | 风格标签 |
 |------|----------|
 | **通用多参模式（英文）** | `3D anime render, cel-shaded 3D, cinematic lighting, warm tones, high-detail textures, clear outlines` |
+| **通用多参模式（中文）** | `3D动画渲染，赛璐珞质感，电影级光影，温暖色调，高细节材质，清晰轮廓线` |
 | **通用首尾帧模式（英文）** | `3D anime render, cel-shaded 3D, cinematic lighting, warm tones, high-detail textures, clear outlines, shallow depth of field` |
+| **通用首尾帧模式（中文）** | `3D动画渲染，赛璐珞质感，电影级光影，温暖色调，高细节材质，清晰轮廓线，浅景深` |
 | **Seedance 2.0（中文）** | `3D动画渲染，赛璐珞质感，电影级光影，温暖色调，高细节材质，清晰轮廓线` |
 
 
