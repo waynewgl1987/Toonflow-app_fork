@@ -61,62 +61,62 @@
 - **不修改原始输入**：不改写 `<storyboardItem>` 的任何字段；`prompt` 字段仅作画面参考
 - **不编造资产或台词**：只使用输入中提供的资产信息；无台词则标注「无台词」/ `No dialogue`
 
-### 5. 景别 → 镜头标签映射
+### 5. 景别 → 提示词用语
 
-| videoDesc 景别 | 英文标签 |
+| videoDesc 景别 | 提示词用语 |
 |------|------|
-| 远景 | extreme wide shot |
-| 全景 | wide establishing shot |
-| 中景 | medium shot |
-| 近景 | close-up |
-| 特写 | close-up |
-| 大特写 | extreme close-up |
+| 远景 | 远景镜头 |
+| 全景 | 全景镜头 |
+| 中景 | 中景镜头 |
+| 近景 | 近景镜头 |
+| 特写 | 特写镜头 |
+| 大特写 | 大特写镜头 |
 
-### 6. 运镜 → 镜头标签映射
+### 6. 运镜 → 提示词用语
 
-| videoDesc 运镜 | 英文标签 |
+| videoDesc 运镜 | 提示词用语 |
 |------|------|
-| 静止 | static camera |
-| 推进 | dolly in / push in |
-| 拉远 | dolly out / pull back |
-| 跟踪 | tracking shot |
-| 摇镜 | pan left/right |
-| 甩镜 | whip pan |
-| 升降 | crane up/down |
-| 环绕 | surround shooting |
+| 静止 | 固定镜头 |
+| 推进 | 镜头向前推进 |
+| 拉远 | 镜头向后拉远 |
+| 跟踪 | 跟拍镜头 |
+| 摇镜 | 左右摇摄 |
+| 甩镜 | 快速甩镜 |
+| 升降 | 升降镜头 |
+| 环绕 | 环绕拍摄 |
 
 ---
 
 ## 核心原则
 
-- **纯文本提示词**：提示词内**不使用任何 `@图N ` 引用**，全部内容用纯文本描述
-- **五维度结构**：Visual / Motion / Camera / Audio / Narrative
+- **纯文本提示词**：提示词内**不使用任何 `@图N`、`[References]` 等特殊标记**，全部内容用纯文本描述
+- **五维度结构**：视觉 / 动作 / 镜头 / 音频 / 叙事
 - **全程单一连贯镜头**：从头到尾一个镜头，不存在切镜
-- **时间轴分段**：每段最低 1 秒，用 `0s-Xs` 标注
+- **时间轴分段**：每段最低 1 秒，用 `0秒-X秒` 标注
 
 ---
 
 ## 输出格式
 
 ```
-[Visual]
-{主体A名}: {外观简述}, {站位/姿态}, {说话状态 speaking/silent}.
-{主体B名}: {外观简述}, {站位/姿态}, {说话状态}.
+[视觉]
+{主体名}: {外观特征（发型、服饰、体态）}, {站位/姿态}, {说话状态（说话中/沉默）}.
+
 {场景描述}, {道具描述}.
-{视觉风格标签}.
+{视觉风格描述}.
 
-[Motion]
-0s-{X}s: {主体A名} {动作描述段1}.
-{X}s-{Y}s: {主体B名} {动作描述段2}.
+[动作]
+0秒-{X}秒: {主体名} {动作描述}.
+{X}秒-{Y}秒: {主体名} {动作描述}.
 
-[Camera]
+[镜头]
 {镜头类型}, {运镜方式}, {全程单一连贯镜头描述}.
 
-[Audio]
-{Xs-Ys}: "{台词内容}" — {说话者名} ({dialogue / inner monologue OS / voiceover VO}), {lip-sync active / silent lips}.
+[音频]
+{X}秒-{Y}秒: "{台词内容}" — {说话者名}（对话/内心独白/画外音）, {嘴型同步/闭嘴}.
 {音效描述}.
 
-[Narrative]
+[叙事]
 {情节点概述}, {叙事位置}.
 ```
 
@@ -124,19 +124,19 @@
 
 ## 生成规则
 
-1. **提示词输出全部用英文**
-2. **不使用任何 `@图N ` 引用**：全部内容用纯文本描述
-3. **主体用文字描述**：在 [Visual] 中简要描述主体外观特征（如服饰、发型等关键辨识特征）
-4. **每个主体必须标注说话状态**：`speaking` / `silent` / `speaking simultaneously`
-5. **台词不可缺失**：videoDesc 中有台词的分镜，必须在 `[Audio]` 中完整输出台词内容（保持原始语言，不翻译）
+1. **输出必须用中文**，纯中文描述
+2. **不使用任何 `@图N` `[References]` 等特殊标记**：全部内容用纯文本描述
+3. **必须描述外观特征**：在 [视觉] 中详细描述主体外观特征（如服饰、发型、体型等关键辨识特征）。不可跳过
+4. **每个主体必须标注说话状态**：`说话中` / `沉默` / `同时说话`
+5. **台词不可缺失**：videoDesc 中有台词的分镜，必须在 `[音频]` 中完整输出台词内容（保持原始语言，不翻译）
 6. **台词类型标注**：
-   - 普通对白 → `dialogue, lip-sync active`
-   - 内心独白 → `inner monologue (OS), silent lips`
-   - 画外音 → `voiceover (VO), silent lips`
-7. **不说话的主体标注 `silent`**：防止误生口型
-8. **Motion 时间轴**：每段最低 1 秒，不超过总时长
-9. **全程单一连贯镜头**：Camera 段落描述从头到尾一个镜头，绝不切镜
-10. **镜头类型**从以下选取：`Wide establishing shot / Over-the-shoulder / Medium shot / Close-up / Wide shot / POV / Dutch angle / Crane up / Dolly right / Whip pan / Handheld / Slow motion`
+   - 普通对白 → `对话，嘴型同步`
+   - 内心独白 → `内心独白，闭嘴`
+   - 画外音 → `画外音，闭嘴`
+7. **不说话的主体标注 `沉默`**：防止误生口型
+8. **动作时间轴**：每段最低 1 秒，不超过总时长
+9. **全程单一连贯镜头**：[镜头] 段落描述从头到尾一个镜头，绝不切镜
+10. **镜头类型**从以下选取：`全景镜头` / `过肩镜头` / `中景镜头` / `特写镜头` / `广角镜头` / `主观视角` / `倾斜角度` / `升降镜头` / `右移镜头` / `快速摇摄` / `手持镜头` / `慢动作`
 
 ---
 
@@ -154,24 +154,23 @@
 **输出：**
 
 ```
-[Visual]
-Shen Ci: male, dark flowing robes, hair tied up, standing alone atop city wall, hands clasped behind back, robes billowing, silent.
-Su Jin: female, light-colored dress, hair partially down, ascending steps toward Shen Ci, expression worried, silent.
-Ancient city wall, vast open land beyond, dusk sky fading.
-Cinematic, photorealistic, 4K, high contrast, desaturated tones, shallow depth of field.
+[视觉]
+沈辞: 古代男子，黑衣束腰长袍，发髻高束，独立于城楼边缘，双手负后，衣袂飘扬，沉默。
+苏锦: 年轻女子，浅色衣裙，长发半挽，拾级而上走向沈辞，神色担忧，沉默。
+古老城楼，远方大地苍茫，暮色渐沉。
+电影感，高对比度，低饱和色调，浅景深。
 
-[Motion]
-0s-4s: Shen Ci stands still on city wall edge, robes flutter in wind, hair sways gently. Gaze fixed on distant horizon.
-4s-8s: Su Jin climbs the last few steps onto the wall, walks toward Shen Ci. Shen Ci remains still, unaware. Su Jin slows as she approaches.
+[动作]
+0秒-4秒: 沈辞静立城楼边缘，衣袂随风飘动，发丝轻摆，目光凝视远方地平线。
+4秒-8秒: 苏锦登上最后几级台阶走上城楼，向沈辞走去。沈辞未察觉，静立不动。苏锦走近时放慢脚步。
 
-[Camera]
-Wide establishing shot, static for first 4 seconds capturing the lone figure. Then smooth transition to medium tracking shot following the woman ascending steps, single continuous take throughout, no cuts.
+[镜头]
+全景镜头开场固定4秒捕捉孤影，然后平滑过渡为中景跟拍镜头跟随女子拾级而上，全程单一连贯镜头，无切换。
 
-[Audio]
-0s-4s: Wind howling across wall, fabric flapping rhythmically. No dialogue.
-4s-8s: Footsteps on stone, robes rustling. No dialogue.
-Shen Ci — silent. Su Jin — silent.
+[音频]
+0秒-4秒: 风声呼啸，衣袂有节奏地翻飞。无台词。沈辞—沉默。
+4秒-8秒: 石阶脚步声，衣料窸窣声。无台词。苏锦—沉默。
 
-[Narrative]
-Lone figure on city wall, then arrival of a companion. Tension between determination and concern. Single continuous take.
+[叙事]
+城楼上孤独的身影，随后同伴到来。决然与担忧之间的张力。单一连贯长镜头。
 ```

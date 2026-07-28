@@ -60,80 +60,61 @@
 - **不修改原始输入**：不改写 `<storyboardItem>` 的任何字段；`prompt` 字段仅作画面参考
 - **不编造资产或台词**：只使用输入中提供的资产信息；无台词则标注「无台词」/ `No dialogue`
 
-### 5. 景别 → 镜头标签映射
+### 5. 景别 → 镜头标签
 
-| videoDesc 景别 | 英文标签 |
+| videoDesc 景别 | 提示词用语 |
 |------|------|
-| 远景 | extreme wide shot |
-| 全景 | wide establishing shot |
-| 中景 | medium shot |
-| 近景 | close-up |
-| 特写 | close-up |
-| 大特写 | extreme close-up |
+| 远景 | 远景镜头 |
+| 全景 | 全景镜头 |
+| 中景 | 中景镜头 |
+| 近景 | 近景镜头 |
+| 特写 | 特写镜头 |
+| 大特写 | 大特写镜头 |
 
-### 6. 运镜 → 镜头标签映射
+### 6. 运镜 → 提示词用语
 
-| videoDesc 运镜 | 英文标签 |
+| videoDesc 运镜 | 提示词用语 |
 |------|------|
-| 静止 | static camera |
-| 推进 | dolly in / push in |
-| 拉远 | dolly out / pull back |
-| 跟踪 | tracking shot |
-| 摇镜 | pan left/right |
-| 甩镜 | whip pan |
-| 升降 | crane up/down |
-| 环绕 | surround shooting |
-
----
-
-## 资产引用编号规则
-
-所有资产和分镜图统一使用 `@图N ` 格式引用，编号规则如下：
-
-1. **资产**：按资产信息中 `[id, type, name]` 的出现顺序，从 `@图1 ` 开始连续编号
-   - 编号严格按输入位置分配，不按类型归组（资产类型的出现顺序不固定）
-2. **分镜图**：每条 `<storyboardItem>` 对应一张分镜图，编号接续资产之后
-3. **跳过无分镜图的条目**：当 `shouldGenerateImage="false"` 时，该分镜不分配编号，后续编号顺延
-
-> **关键**：生成提示词时，必须根据资产的实际 `type` 字段确定引用方式，不可根据编号大小假定类型。
+| 静止 | 固定镜头 |
+| 推进 | 镜头向前推进 |
+| 拉远 | 镜头向后拉远 |
+| 跟踪 | 跟拍镜头 |
+| 摇镜 | 左右摇摄 |
+| 甩镜 | 快速甩镜 |
+| 升降 | 升降镜头 |
+| 环绕 | 环绕拍摄 |
 
 ---
 
 ## 输出格式
 
-```
-[References]
-@图{N} : [{资产/分镜名称}参考图]
-...（按编号顺序列出所有资产和分镜图）
+输出为一段**纯中文描述**，不使用任何特殊标记（如 `@图N`、`[References]`、`[Instruction]` 等）。分多个句子连贯描述以下要素：
 
-[Instruction]
-Based on the storyboard @图{分镜图编号} :
-@图{角色资产编号} {动作/状态描述（英文）},
-set in the {场景描述（英文）} of @图{场景资产编号} ,
-{镜头/运镜描述（英文）},
-{情感基调（英文）},
-{台词描述（英文，含 dialogue/OS/VO 标注）/ No dialogue},
-{音效描述（英文）}.
+```
+{角色名}（{角色外观特征：发型、服饰、体态等}），{动作/状态描述}，{情绪/表情描述}。
+场景：{场景描述}，{环境细节}，{时间/光线氛围}。
+镜头：{景别}，{运镜方式}。
+{台词内容} / 无台词。
+{音效描述}。
 ```
 
 ---
 
 ## 生成规则
 
-1. **Instruction 必须用英文**
+1. **输出必须用中文**，纯文字描述，不使用任何 `@图N`、`[References]`、`[Instruction]`、`<主体N>` 等标记语法
 2. **严格遵循 videoDesc**：提示词内容严格基于 videoDesc 的画面描述、时长、景别、运镜、角色动作、情绪、光影氛围、台词、音效字段，不编造额外信息
-3. **角色动作**从 videoDesc 的「角色动作」字段提取，翻译为简洁英文动作描述
-4. **台词不可缺失**：videoDesc 中有台词的分镜，必须在 Instruction 中体现台词内容（保持原始语言，不翻译）
+3. **必须描述角色外观**：根据资产信息（特别是 `role` 类型资产的 `name`）和 videoDesc 的关联资产名称，描述角色的发型、服饰、体态等关键外貌特征（如「长发披肩、身着白色长裙」「短发干练、西装革履」）。不可跳过外观描述
+4. **台词不可缺失**：videoDesc 中有台词的分镜，必须在提示词中体现台词内容（保持原始语言，不翻译）
 5. **台词类型标注**：
-   - 普通对白 → `(dialogue)`
-   - 内心独白 → `(inner monologue, OS)`
-   - 画外音 → `(voiceover, VO)`
-6. **镜头风格**使用标准标签：`cinematic` / `wide-angle` / `close-up` / `slow motion` / `surround shooting` / `handheld`
-7. **空间关系**使用标准动词：`wearing` / `holding` / `standing on` / `following behind` / `sitting in`
-8. 单条分镜对应单个 `@图N `，不做多帧跨镜描述
-9. 无需描述角色外观（由参考图负责）
-10. 无时长标注（由模型推断）
-11. **无分镜图时**：当 `shouldGenerateImage="false"` 时，`[References]` 中不列出该分镜图，`[Instruction]` 中不使用 `@图N ` 引用，改为纯文本描述
+   - 普通对白 → `（对话）`
+   - 内心独白 → `（内心独白）`
+   - 画外音 → `（画外音）`
+6. **镜头风格**使用中文描述：`电影感` / `广角` / `特写` / `慢动作` / `环绕拍摄` / `手持镜头`
+7. **空间关系**使用中文描述：`身穿` / `手持` / `立于` / `跟随在` / `坐在`
+8. 每个分镜独立输出一段提示词，不做多分镜合并
+9. **无时长标注**（由模型推断）
+10. **无分镜图时**：当 `shouldGenerateImage="false"` 时，仅描述动作和场景，不加「在画面中」等引用性描述
 
 ---
 
@@ -148,23 +129,12 @@ set in the {场景描述（英文）} of @图{场景资产编号} ,
 <storyboardItem videoDesc='（苏锦登上城楼走向沈辞、城楼、苏锦/沈辞/城楼、4s、中景、跟踪、苏锦拾级而上走向沈辞、担忧、黄昏余晖渐暗、无台词、脚步声风声、A001/A002/A003）' shouldGenerateImage="true"></storyboardItem>
 ```
 
-**输出：**
+**输出（两条分镜各输出一段）：**
 
 ```
-[References]
-@图1 : [沈辞参考图]
-@图2 : [苏锦参考图]
-@图3 : [城楼参考图]
-@图4 : [分镜图1]
-@图5 : [分镜图2]
+沈辞（古代男子发型，黑衣束腰长袍，身形挺拔），负手独立于城楼之上，衣袂在风中飘扬，目光坚定地远眺苍茫大地，神情决绝。场景：古老城楼，城墙砖石斑驳，远处大地苍茫无边。光线：黄昏时分，冷调侧逆光勾勒出人物剪影。镜头：全景镜头，固定拍摄。无台词。音效：风声呼啸，衣袂翻飞声。
+```
 
-[Instruction]
-Based on the storyboard from @图4 to @图5 :
-@图1 standing alone atop the city wall, hands clasped behind back, robes billowing in the wind, gazing across the vast land,
-@图2 ascending the steps toward @图1 , expression worried,
-set in the ancient city wall environment of @图3 ,
-wide shot transitioning to medium tracking shot, cinematic,
-resolute determination shifting to concerned anticipation, dusk cold-toned side-backlit atmosphere fading,
-no dialogue,
-wind howling, fabric flapping, footsteps on stone.
+```
+苏锦（年轻女子，浅色衣裙，长发半挽），拾级而上登上城楼，步伐放慢走向沈辞，眉头微蹙，神色担忧。场景：城楼台阶延伸向上，背景天光渐暗。光线：黄昏余晖逐渐消散，暖调与冷调交织。镜头：中景镜头，跟拍苏锦拾级的背影。无台词。音效：脚步声在石阶上回响，风声渐起。
 ```
