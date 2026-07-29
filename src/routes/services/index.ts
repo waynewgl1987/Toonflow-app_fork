@@ -83,15 +83,7 @@ function isProcessRunning(processName: string): Promise<boolean> {
   });
 }
 
-/** 杀掉指定名称的进程 */
-async function killProcess(processName: string): Promise<void> {
-  try {
-    spawn("taskkill", ["/f", "/im", processName]);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  } catch {}
-}
-
-/** 强制释放指定端口：查找占用端口的进程并 kill */
+/** 强制释放指定端口：查找占用端口的进程并 kill（异步 spawn 版） */
 function killProcessOnPort(port: number): void {
   try {
     const pidInfo = execSync(`netstat -ano | findstr ":${port} "`).toString();
@@ -104,6 +96,35 @@ function killProcessOnPort(port: number): void {
         }
       }
     }
+  } catch {}
+}
+
+/** 根据端口号杀死进程（同步 execSync 版，返回是否成功找到并杀死了进程） */
+function killProcessByPort(port: number): boolean {
+  try {
+    const pidInfo = execSync(`netstat -ano | findstr ":${port} "`, { timeout: 5000 }).toString().trim();
+    if (!pidInfo) return false;
+    const lines = pidInfo.split("\n").filter(l => l.trim());
+    let killed = false;
+    for (const line of lines) {
+      const m = line.match(/(\d+)\s*$/m);
+      if (m && m[1] !== '0') {
+        try {
+          execSync(`taskkill /f /pid ${m[1]}`, { stdio: "ignore", timeout: 3000 });
+          killed = true;
+        } catch {}
+      }
+    }
+    return killed;
+  } catch {
+    return false;
+  }
+}
+
+/** 只根据进程名称杀进程（仅用于 llama-server.exe 这种独占进程名） */
+function killProcessByName(processName: string): void {
+  try {
+    execSync(`taskkill /f /im ${processName}`, { stdio: "ignore", timeout: 3000 });
   } catch {}
 }
 
@@ -308,12 +329,12 @@ router.post("/start-qwen3", async (_req: Request, res: Response) => {
 
     // ── 启动前清理 ──────────────────────────────────────────────
     // 注意：所有 kill 操作必须用 execSync（同步），防止异步 taskkill 误杀新进程
-    // 1. 停止冲突服务 ComfyUI，释放显存
+    // 1. 停止冲突服务 ComfyUI，释放显存 — 按端口杀，不杀其他 Python 进程！
     const comfyRunning = await checkPort(CONFIG.comfyui.port);
     if (comfyRunning) {
       console.log(`[服务] ComfyUI 正在运行，自动停止以释放显存`);
-      try { execSync("taskkill /f /im pythonw.exe", { stdio: "ignore" }); } catch {}
-      try { execSync("taskkill /f /im python.exe", { stdio: "ignore" }); } catch {}
+      killProcessByPort(CONFIG.comfyui.port);
+      delete startingTimestamps["comfyui"];
       await new Promise(r => setTimeout(r, 2000));
     }
 
@@ -387,14 +408,14 @@ router.post("/start-comfyui", async (_req: Request, res: Response) => {
     if (qwen3Running) {
       console.log(`[服务] Qwen3 正在运行，自动停止以释放显存`);
       try { execSync("taskkill /f /im llama-server.exe", { stdio: "ignore" }); } catch {}
+      delete startingTimestamps["qwen3"];
       await new Promise(r => setTimeout(r, 2000));
     }
 
-    // 2. 清理已存在的 ComfyUI python 进程（同步！防止异步误杀新进程）
-    try { execSync("taskkill /f /im pythonw.exe", { stdio: "ignore" }); } catch {}
-    try { execSync("taskkill /f /im python.exe", { stdio: "ignore" }); } catch {}
+    // 2. 清理已存在的 ComfyUI 进程 — 按端口杀，不杀其他 Python 进程！
+    killProcessByPort(CONFIG.comfyui.port);
 
-    // 3. 强制释放 8188 端口（同步！处理 TIME_WAIT / 僵尸进程）
+    // 3. 强制释放 8188 端口（处理 TIME_WAIT / 僵尸进程）
     killProcessOnPort(CONFIG.comfyui.port);
 
     // 4. 等待端口完全释放
@@ -592,24 +613,40 @@ router.get("/diagnose", async (_req: Request, res: Response) => {
   res.json({ success: true, data: lines.join("\n") });
 });
 
-/** 停止所有服务 */
+/** 停止 Qwen3 — 按进程名杀（llama-server.exe 是独占进程名） */
+router.post("/stop-qwen3", async (_req: Request, res: Response) => {
+  try {
+    killProcessByName("llama-server.exe");
+    killProcessOnPort(CONFIG.qwen3.port);
+    delete startingTimestamps["qwen3"];
+    res.send({ success: true, message: "Qwen3 已停止" });
+  } catch (e: any) {
+    res.status(500).send({ success: false, message: e.message });
+  }
+});
+
+/** 停止 ComfyUI — 按端口杀 PID，不杀其他 Python 进程！ */
+router.post("/stop-comfyui", async (_req: Request, res: Response) => {
+  try {
+    killProcessByPort(CONFIG.comfyui.port);
+    killProcessOnPort(CONFIG.comfyui.port);
+    delete startingTimestamps["comfyui"];
+    res.send({ success: true, message: "ComfyUI 已停止" });
+  } catch (e: any) {
+    res.status(500).send({ success: false, message: e.message });
+  }
+});
+
+/** 停止所有服务 — 使用精准 PID/端口杀，不再用 taskkill /f /im python* */
 router.post("/stop-all", async (_req: Request, res: Response) => {
   try {
-    // 杀掉 Qwen3 (llama-server.exe)
-    try { spawn("taskkill", ["/f", "/im", "llama-server.exe"]); } catch {}
-    // 杀掉 ComfyUI (pythonw.exe / python.exe)
-    try { spawn("taskkill", ["/f", "/im", "pythonw.exe"]); } catch {}
-    try { spawn("taskkill", ["/f", "/im", "python.exe"]); } catch {}
-    // 额外强制释放 8188 端口
-    try {
-      const port = CONFIG.comfyui.port;
-      const pidInfo = execSync(`netstat -ano | findstr ":${port} "`).toString();
-      const lines = pidInfo.trim().split("\n");
-      for (const line of lines) {
-        const m = line.match(/(\d+)\s*$/m);
-        if (m) spawn("taskkill", ["/f", "/pid", m[1]]);
-      }
-    } catch {}
+    // 停 Qwen3 — llama-server.exe 是独占进程名，安全
+    killProcessByName("llama-server.exe");
+    killProcessOnPort(CONFIG.qwen3.port);
+
+    // 停 ComfyUI — 按端口杀 PID，不碰其他 Python 进程！
+    killProcessByPort(CONFIG.comfyui.port);
+    killProcessOnPort(CONFIG.comfyui.port);
 
     runningProcesses = {};
     delete startingTimestamps["qwen3"];
