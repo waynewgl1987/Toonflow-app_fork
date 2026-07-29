@@ -25,6 +25,7 @@ import route21 from "./routes/assets/updateAudioAssets";
 import route22 from "./routes/assets/uploadClip";
 import route23 from "./routes/assetsGenerate/batchGenerateImageAssets";
 import route24 from "./routes/assetsGenerate/batchPolishAssetsPrompt";
+import route24b from "./routes/assetsGenerate/batchCancelGenerate";
 import route25 from "./routes/assetsGenerate/cancelGenerate";
 import route26 from "./routes/assetsGenerate/generateAssets";
 import route27 from "./routes/assetsGenerate/polishAssetsPrompt";
@@ -202,6 +203,7 @@ export default async (app: Express) => {
   app.use("/api/assetsGenerate/batchGenerateImageAssets", route23);
   app.use("/api/assetsGenerate/batchPolishAssetsPrompt", route24);
   app.use("/api/assetsGenerate/cancelGenerate", route25);
+  app.use("/api/assetsGenerate/batchCancelGenerate", route24b);
   app.use("/api/assetsGenerate/generateAssets", route26);
   app.use("/api/assetsGenerate/polishAssetsPrompt", route27);
   app.use("/api/common/getBigImage", route28);
