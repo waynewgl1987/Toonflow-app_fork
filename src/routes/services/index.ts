@@ -216,6 +216,43 @@ async function checkComfyuiStartResult(port: number, logPath: string): Promise<v
   })();
 }
 
+/**
+ * 后台检测 Qwen3 启动结果（不阻塞响应）
+ * 每 5 秒检查一次端口状态，最多检查 120 秒
+ */
+function checkQwen3StartResult(port: number): void {
+  (async () => {
+    const startTime = Date.now();
+    const maxWait = 120000; // 2 分钟
+
+    while (Date.now() - startTime < maxWait) {
+      await new Promise(r => setTimeout(r, 5000));
+
+      const portOpen = await checkPort(port);
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+      if (portOpen) {
+        delete startingTimestamps["qwen3"];
+        const msg = `[Qwen3] 启动成功！端口 ${port} 已就绪（耗时 ${elapsed} 秒）`;
+        console.log(msg);
+        logger.genLog({ event: "qwen3_start_success", port, elapsed });
+        return;
+      }
+
+      if (elapsed % 30 === 0 || elapsed === 10) {
+        console.log(`[Qwen3] 启动中...（${elapsed}s / 120s）`);
+        logger.genLog({ event: "qwen3_start_waiting", port, elapsed });
+      }
+    }
+
+    // 超时 → 清除"启动中"标记
+    delete startingTimestamps["qwen3"];
+    const msg = `[Qwen3] 启动超时（${maxWait / 1000} 秒），请检查日志`;
+    console.error(msg);
+    logger.genLog({ event: "qwen3_start_timeout", port });
+  })();
+}
+
 /** 检查 API 是否就绪（非 503 即视为就绪） */
 function checkApiReady(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -369,6 +406,9 @@ router.post("/start-qwen3", async (_req: Request, res: Response) => {
     });
     proc.unref();
     runningProcesses.qwen3 = proc;
+
+    // 后台监测启动进度
+    checkQwen3StartResult(CONFIG.qwen3.port);
 
     res.send({
       success: true,
