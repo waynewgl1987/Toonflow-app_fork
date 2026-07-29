@@ -254,11 +254,12 @@ refresh = function() {
   }
 };
 async function stopSvc(id) {
-  logMsg("正在停止...");
+  logMsg("正在停止 "+id+"...");
   toast("正在停止...");
-  const r = await api("/stop-all", {method:"POST"});
+  const ep = id === "qwen3" ? "/stop-qwen3" : "/stop-comfyui";
+  const r = await api(ep, {method:"POST"});
   toast(r.message||"已停止", !r.success);
-  logMsg("停止: "+(r.message||"done"));
+  logMsg("已停止: "+id+" ("+(r.message||"done")+")");
   window._startTime = null;
   if(window._startPollTimer) { clearInterval(window._startPollTimer); window._startPollTimer = null; }
   setTimeout(refresh, 1500);
