@@ -58,6 +58,41 @@ export default router.post(
     try {
       const results: Record<string, number> = {};
 
+      // === 前置清理：先删关联表，再删主表 ===
+
+      // assets 阶段：先通过 assetId 清理 o_assets2Storyboard
+      if (stage === "assets") {
+        const assetIds = await u
+          .db("o_assets")
+          .where("projectId", projectId)
+          .select("id")
+          .pluck("id");
+        if (assetIds.length > 0) {
+          const deleted = await u
+            .db("o_assets2Storyboard")
+            .whereIn("assetId", assetIds)
+            .del();
+          results["o_assets2Storyboard"] = deleted || 0;
+        }
+      }
+
+      // storyboard 阶段：先通过 storyboardId 清理 o_assets2Storyboard
+      if (stage === "storyboard") {
+        const storyIds = await u
+          .db("o_storyboard")
+          .where("projectId", projectId)
+          .select("id")
+          .pluck("id");
+        if (storyIds.length > 0) {
+          const deleted = await u
+            .db("o_assets2Storyboard")
+            .whereIn("storyboardId", storyIds)
+            .del();
+          results["o_assets2Storyboard"] = deleted || 0;
+        }
+      }
+
+      // === 再删主表 ===
       for (const table of tables) {
         let query = u.db(table).where("projectId", projectId);
         // o_image 通过 assets 关联到 project
@@ -91,36 +126,6 @@ export default router.post(
           .where("projectId", projectId)
           .where("key", "storyboardTable")
           .del();
-      }
-
-      // 清理 o_assets 时也清理关联的 o_assets2Storyboard
-      if (stage === "assets") {
-        const assetIds = await u
-          .db("o_assets")
-          .where("projectId", projectId)
-          .select("id")
-          .pluck("id");
-        if (assetIds.length > 0) {
-          await u
-            .db("o_assets2Storyboard")
-            .whereIn("assetId", assetIds)
-            .del();
-        }
-      }
-
-      // 清理 o_storyboard 时也清理关联表
-      if (stage === "storyboard") {
-        const storyIds = await u
-          .db("o_storyboard")
-          .where("projectId", projectId)
-          .select("id")
-          .pluck("id");
-        if (storyIds.length > 0) {
-          await u
-            .db("o_assets2Storyboard")
-            .whereIn("storyboardId", storyIds)
-            .del();
-        }
       }
 
       // 清理 videoTrack 时连带清理 o_video
