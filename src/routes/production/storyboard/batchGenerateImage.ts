@@ -91,11 +91,21 @@ export default router.post(
       ),
     );
 
-    const generateTask = async (item: (typeof storyboardData)[number]) => {
+    // 同一场戏共享一个场景种子，确保跨帧一致性
+    // 基于 projectId + scriptId 生成确定性种子，同一场戏每次重开生成也保持一致
+    const sceneSeed = (() => {
+      let h = 0;
+      const s = String(projectId) + "_" + String(scriptId);
+      for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i) | 0;
+      return Math.abs(h % 2147483646) + 1;
+    })();
+
+    const generateTask = async (item: (typeof storyboardData)[number], frameIdx: number) => {
       const repeloadObj = {
         prompt: item.prompt!,
         size: projectSettingData?.imageQuality as "1K" | "2K" | "4K",
         aspectRatio: projectSettingData?.videoRatio as `${number}:${number}`,
+        seed: sceneSeed,
       };
       try {
         const imageCls = await u.Ai.Image(projectSettingData?.imageModel as `${string}:${string}`).run(
@@ -133,9 +143,11 @@ export default router.post(
     } else {
       generateList = storyboardData.filter((item) => item.shouldGenerateImage !== 0);
     }
+    // 按原始 storyboardData 中的顺序计算 frameIdx，保证帧间种子连续
+    const getIdOrderIndex = (id: number) => storyboardData.findIndex(s => s.id === id);
     for (let i = 0; i < generateList.length; i += concurrentCount) {
       const batch = generateList.slice(i, i + concurrentCount);
-      await Promise.all(batch.map(generateTask));
+      await Promise.all(batch.map((item) => generateTask(item, getIdOrderIndex(item.id))));
     }
   },
 );

@@ -1,8 +1,10 @@
 import express from "express";
 import http from "http";
-import { success } from "@/lib/responseFormat";
 
 const router = express.Router();
+
+// 统一响应格式：{ success: true, data: ... } 与 services API 一致
+function ok(data: any = null) { return { success: true, data }; }
 
 // 批处理注册: batchKey → { labels: string[], time: number }
 const batchRegistry = new Map<string, { labels: string[]; time: number }>();
@@ -12,9 +14,9 @@ router.post("/register-batch", (req, res) => {
   const { batchKey, labels } = req.body || {};
   if (batchKey && Array.isArray(labels)) {
     batchRegistry.set(String(batchKey), { labels, time: Date.now() });
-    res.send(success({ ok: true }));
+    res.send(ok({ ok: true }));
   } else {
-    res.send(success({ ok: false }));
+    res.send(ok({ ok: false }));
   }
 });
 
@@ -47,9 +49,9 @@ router.post("/register", (req, res) => {
   if (promptId && text) {
     // 存入 firstSeen 以显示启动时间
     if (!firstSeen.has(String(promptId))) firstSeen.set(String(promptId), Date.now());
-    res.send(success({ ok: true }));
+    res.send(ok({ ok: true }));
   } else {
-    res.send(success({ ok: false }));
+    res.send(ok({ ok: false }));
   }
 });
 
@@ -60,7 +62,7 @@ const firstSeen = new Map<string, number>();
 router.get("/", async (_req, res) => {
   try {
     const q: any = await comfyRequest("GET", "/queue");
-    if (q._err) { res.send(success({ running: [], queued: [], total: 0, _offline: true })); return; }
+    if (q._err) { res.send(ok({ running: [], queued: [], total: 0, _offline: true })); return; }
 
     const runningArr = q.queue_running ?? q.running ?? [];
     // ComfyUI /queue API: queue_pending 是对象 { prompt_id: {...}, ... }，需转数组
@@ -102,22 +104,22 @@ router.get("/", async (_req, res) => {
     for (const [k, v] of batchRegistry) { if (v.time < cutoff) batchRegistry.delete(k); }
     for (const [k, v] of firstSeen) { if (v < cutoff) firstSeen.delete(k); }
 
-    res.send(success({ running, queued, total: running.length + queued.length }));
+    res.send(ok({ running, queued, total: running.length + queued.length }));
   } catch (e: any) {
-    res.send(success({ running: [], queued: [], total: 0, _offline: true }));
+    res.send(ok({ running: [], queued: [], total: 0, _offline: true }));
   }
 });
 
 // DELETE /api/other/comfyuiQueue
 router.delete("/", async (_req, res) => {
-  try { await comfyRequest("POST", "/queue", { clear: true }); res.send(success({ cleared: true })); }
-  catch (e: any) { res.send(success({ ok: false })); }
+  try { await comfyRequest("POST", "/queue", { clear: true }); res.send(ok({ cleared: true })); }
+  catch (e: any) { res.send(ok({ ok: false })); }
 });
 
 // POST /api/other/comfyuiQueue/interrupt
 router.post("/interrupt", async (_req, res) => {
-  try { await comfyRequest("POST", "/interrupt"); res.send(success({ interrupted: true })); }
-  catch (e: any) { res.send(success({ ok: false })); }
+  try { await comfyRequest("POST", "/interrupt"); res.send(ok({ interrupted: true })); }
+  catch (e: any) { res.send(ok({ ok: false })); }
 });
 
 // POST /api/other/comfyuiQueue/delete — 批量删除指定 promptId 的队列任务
@@ -125,7 +127,7 @@ router.post("/delete", async (req, res) => {
   try {
     const { promptIds } = req.body || {};
     if (!Array.isArray(promptIds) || promptIds.length === 0) {
-      return res.send(success({ ok: false, message: "未指定要删除的任务" }));
+      return res.send(ok({ ok: false, message: "未指定要删除的任务" }));
     }
     // ComfyUI 支持一次传入多个 promptId: { "delete": ["id1","id2",...] }
     await comfyRequest("POST", "/queue", { delete: promptIds.map(String) });
@@ -133,9 +135,9 @@ router.post("/delete", async (req, res) => {
     for (const pid of promptIds) {
       if (pid) firstSeen.delete(String(pid));
     }
-    res.send(success({ ok: true, deleted: promptIds.length }));
+    res.send(ok({ ok: true, deleted: promptIds.length }));
   } catch (e: any) {
-    res.send(success({ ok: false, message: e.message }));
+    res.send(ok({ ok: false, message: e.message }));
   }
 });
 
