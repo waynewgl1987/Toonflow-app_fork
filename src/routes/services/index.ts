@@ -495,7 +495,7 @@ router.post("/start-comfyui", async (_req: Request, res: Response) => {
       detached: true,
       stdio: ["ignore", logFd, logFd],
       windowsHide: true,  // 隐藏 python.exe 控制台窗口
-      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+      env: { ...process.env, PYTHONIOENCODING: "utf-8", HF_HOME: "E:/AI/huggingface_cache", HUGGINGFACE_HUB_CACHE: "E:/AI/huggingface_cache/hub" },
     });
     proc.unref();
 

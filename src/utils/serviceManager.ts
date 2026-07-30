@@ -54,7 +54,7 @@ const SERVICES = {
         detached: true,
         stdio: ["ignore", logFd, logFd],
         windowsHide: true,
-        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+        env: { ...process.env, PYTHONIOENCODING: "utf-8", HF_HOME: "E:/AI/huggingface_cache", HUGGINGFACE_HUB_CACHE: "E:/AI/huggingface_cache/hub" },
       });
       proc.on("error", (err) => {
         const msg = `[ComfyUI] 进程错误: ${err.message}`;
