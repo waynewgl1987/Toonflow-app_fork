@@ -25,12 +25,13 @@ const CONFIG = {
   comfyui: {
     name: "ComfyUI",
     rootDir: "E:\\AI\\ComfyAI_Video-ShortVideo\\ComfyUI纯包\\ComfyUI",
-    // 使用 pythonw.exe（无窗口GUI应用），启动时不会闪烁控制台窗口
-    // 之前 pythonw.exe 启动失败是因为异步 taskkill 误杀进程，现已修复
+    // 使用 pythonw.exe（GUI 子系统应用），不会创建控制台窗口，不会闪烁
+    // 配合 detached:true 隔离进程组，关闭 ComfyUI 不影响 Toonflow 主进程
+    // 注意: 不要用 python.exe（控制台应用），spawn 时会瞬间弹出 CMD 窗口再隐藏导致闪烁
     pythonExe: "python\\pythonw.exe",
     mainScript: "ComfyUI\\main.py",
     port: 8188,
-    processName: "pythonw.exe",
+    processName: "python.exe",
   },
 };
 
@@ -86,7 +87,9 @@ function isProcessRunning(processName: string): Promise<boolean> {
 /** 强制释放指定端口：查找占用端口的进程并 kill（异步 spawn 版） */
 function killProcessOnPort(port: number): void {
   try {
-    const pidInfo = execSync(`netstat -ano | findstr ":${port} "`).toString();
+    // 必须加 | findstr LISTENING，只杀监听该端口的服务进程
+    // 不加 LISTENING 过滤会误杀所有连接此端口的进程（包括 Node.js 自身的 WebSocket 连接）
+    const pidInfo = execSync(`netstat -ano | findstr ":${port} " | findstr LISTENING`).toString();
     if (pidInfo) {
       const lines = pidInfo.trim().split("\n");
       for (const line of lines) {
@@ -102,7 +105,9 @@ function killProcessOnPort(port: number): void {
 /** 根据端口号杀死进程（同步 execSync 版，返回是否成功找到并杀死了进程） */
 function killProcessByPort(port: number): boolean {
   try {
-    const pidInfo = execSync(`netstat -ano | findstr ":${port} "`, { timeout: 5000 }).toString().trim();
+    // 必须加 | findstr LISTENING，只杀监听该端口的服务进程
+    // 不加 LISTENING 过滤会误杀所有连接此端口的进程（包括 Node.js 自身的 WebSocket 连接）
+    const pidInfo = execSync(`netstat -ano | findstr ":${port} " | findstr LISTENING`, { timeout: 5000 }).toString().trim();
     if (!pidInfo) return false;
     const lines = pidInfo.split("\n").filter(l => l.trim());
     let killed = false;

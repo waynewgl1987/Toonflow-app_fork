@@ -46,7 +46,9 @@ const SERVICES = {
       const logFd = fs.openSync(comfyLogPath, "a");
       fs.writeSync(logFd, `\n--- ComfyUI (auto) start at ${new Date().toISOString()} ---\n`);
 
-      // 使用 python.exe（控制台应用）+ 直接 spawn，stdout/stderr 重定向到日志文件
+      // 使用 pythonw.exe（GUI 子系统应用），不会创建控制台窗口
+      // 配合 detached:true 隔离进程组，关闭 ComfyUI 时不影响 Toonflow 主进程
+      // 不要用 python.exe（控制台应用），spawn 时会弹出 CMD 窗口再隐藏导致闪烁
       const proc = spawn(pythonExe, [mainScript, "--listen", "--port", "8188"], {
         cwd: rootDir,
         detached: true,
@@ -73,7 +75,9 @@ const SERVICES = {
     },
     stop: async () => {
       try {
-        const pidInfo = execSync(`netstat -ano | findstr ":8188 "`).toString();
+        // 必须加 | findstr LISTENING，只杀监听该端口的服务进程
+        // 否则会误杀有 WebSocket 连接到 ComfyUI 的 Node.js 进程自身
+        const pidInfo = execSync(`netstat -ano | findstr ":8188 " | findstr LISTENING`).toString();
         if (pidInfo) {
           const lines = pidInfo.trim().split("\n");
           for (const line of lines) {
@@ -166,7 +170,7 @@ async function waitForPortClosed(port: number, timeoutMs: number = 30000): Promi
 
 function checkComfyQueue(port: number): Promise<{ running: number; queued: number }> {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/queue`, { timeout: 5000 }, (res) => {
+    const req = http.get(`http://127.0.0.1:${port}/queue`, { timeout: 15000 }, (res) => {
       let data = "";
       res.on("data", (chunk) => data += chunk);
       res.on("end", () => {
