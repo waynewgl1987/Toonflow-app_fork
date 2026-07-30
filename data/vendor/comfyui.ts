@@ -70,10 +70,11 @@ const vendor: VendorConfig = {
 2. 工作流 JSON 必须使用 ComfyUI "Save (API Format)" 导出
 3. 导出的 JSON 中 CLIPTextEncode 节点的 text 字段必须改为 \`__PROMPT__\`
 
-**角色一致性（v2）：**
-- 当分镜有关联角色素材图时，自动使用 img2img 工作流
-- 以角色素材图为起点进行生成，人物、服装、性别特征更稳定
-- 无需手动配置，系统自动选择 txt2img / img2img
+**角色一致性（v3 - IPAdapter）：**
+- 当分镜有关联角色素材图时，自动使用 IPAdapter + SDXL 工作流
+- 通过 IPAdapter 强制参考角色外观，人物、服装、性别特征高度稳定
+- 无需手动配置，系统自动选择普通 / IPAdapter 工作流
+- 需要 ComfyUI_IPAdapter_plus 插件 + IPAdapter SDXL 模型文件
 
 **已配置的工作流文件（均含 \`__PROMPT__\` 占位符）：**
 
@@ -252,12 +253,30 @@ function prepareWorkflow(rawJson: string, prompt: string, uploadedFiles?: string
     "__PROMPT__": enhancedPrompt,
   });
 
-  // 注入种子：找到所有 KSampler 节点，设置确定性种子
+  // LOG: 打印替换后的 CLIPTextEncode 节点内容
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    const n = node as any;
+    if (n.class_type === "CLIPTextEncode" && n.inputs?.text) {
+      const text = String(n.inputs.text);
+      logger(`[ComfyUI] CLIP节点 ${nodeId} "${n._meta?.title || ""}" 最终文本 (前120字): ${text.slice(0, 120)}`);
+    }
+  }
+  logger(`[ComfyUI] DEFAULTCONSISTENCY=${JSON.stringify(DEFAULT_CONSISTENCY_PROMPT)}`);
+  logger(`[ComfyUI] SEED=${seed}`);
+
+  // 注入种子：找到所有采样器节点，设置确定性种子
   for (const [nodeId, node] of Object.entries(workflow)) {
     const n = node as any;
     if (n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced") {
       if (n.inputs) {
         n.inputs.seed = seed;
+        logger(`[ComfyUI] KSampler ${nodeId}: steps=${n.inputs.steps} cfg=${n.inputs.cfg} sampler=${n.inputs.sampler_name} scheduler=${n.inputs.scheduler} seed=${seed}`);
+      }
+    }
+    // SDXL Turbo / 自定义采样器使用 noise_seed 字段
+    if (n.class_type === "SamplerCustom") {
+      if (n.inputs) {
+        n.inputs.noise_seed = seed;
       }
     }
   }
@@ -381,6 +400,20 @@ async function submitAndWait(workflow: object, baseUrl: string, retries = 2, pro
   workflow = normalizeNodeIds(workflow);
 
   logger(`[ComfyUI] 提交生成任务...`);
+
+  // LOG: 打印模型和关键节点
+  for (const [id, node] of Object.entries(workflow)) {
+    const n = node as any;
+    if (n.class_type === "CheckpointLoaderSimple" && n.inputs?.ckpt_name) {
+      logger(`[ComfyUI] 模型: ${n.inputs.ckpt_name}`);
+    }
+    if (n.class_type === "VAELoader" && n.inputs?.vae_name) {
+      logger(`[ComfyUI] VAE: ${n.inputs.vae_name}`);
+    }
+    if (n.class_type === "CLIPTextEncode" && n.inputs?.text) {
+      logger(`[ComfyUI] 最终CLIP ${id}: "${n.inputs.text.slice(0, 100)}"`);
+    }
+  }
 
   // 检查工作流结构
   const nodeIds = Object.keys(workflow);
@@ -563,31 +596,36 @@ const imageRequest = async (config: ImageConfig, model: ImageModel): Promise<str
   // 判断是否有角色参考图（来自关联素材），有则使用 img2img 工作流保证角色一致性
   const refList = config.referenceList || [];
   const hasRefImages = refList.some(r => r.base64 && r.base64.length > 100);
+  logger(`[ComfyUI Image] prompt前120字: ${config.prompt.slice(0, 120)}`);
+  logger(`[ComfyUI Image] 参考图数量: ${refList.length} hasRefImages=${hasRefImages} seed=${config.seed}`);
 
   if (hasRefImages) {
-    logger(`[ComfyUI Image] 有 ${refList.length} 张参考图，使用 img2img 工作流`);
-    // 上传第一张参考图到 ComfyUI
+    logger(`[ComfyUI Image] 有 ${refList.length} 张参考图，尝试参考图工作流`);
     const refFilename = await uploadRefImage(baseUrl, refList[0].base64, 0);
     if (refFilename) {
-      // 使用内嵌的 img2img 参考工作流（内置 __REF_IMAGE__ 占位符）
-      const refWorkflowText = `{
-  "9": { "inputs": { "filename_prefix": "z-image-turbo", "images": ["8", 0] }, "class_type": "SaveImage", "_meta": { "title": "保存图像" } },
-  "30": { "inputs": { "clip_name": "qwen_3_4b.safetensors", "type": "lumina2", "device": "default" }, "class_type": "CLIPLoader", "_meta": { "title": "加载CLIP" } },
-  "29": { "inputs": { "vae_name": "ae.safetensors" }, "class_type": "VAELoader", "_meta": { "title": "加载VAE" } },
-  "33": { "inputs": { "text": "__NEGATIVE__", "clip": ["30", 0] }, "class_type": "CLIPTextEncode", "_meta": { "title": "负面提示词" } },
-  "8": { "inputs": { "samples": ["3", 0], "vae": ["29", 0] }, "class_type": "VAEDecode", "_meta": { "title": "VAE解码" } },
-  "28": { "inputs": { "unet_name": "z_image_turbo_bf16.safetensors", "weight_dtype": "default" }, "class_type": "UNETLoader", "_meta": { "title": "UNet加载器" } },
-  "27": { "inputs": { "text": "__PROMPT__", "clip": ["30", 0] }, "class_type": "CLIPTextEncode", "_meta": { "title": "CLIP文本编码" } },
-  "51": { "inputs": { "image": "__REF_IMAGE__" }, "class_type": "LoadImage", "_meta": { "title": "加载参考图" } },
-  "52": { "inputs": { "pixels": ["51", 0], "vae": ["29", 0] }, "class_type": "VAEEncode", "_meta": { "title": "VAE编码" } },
-  "11": { "inputs": { "shift": 3, "model": ["28", 0] }, "class_type": "ModelSamplingAuraFlow", "_meta": { "title": "采样算法" } },
-  "3": { "inputs": { "seed": 42, "steps": 12, "cfg": 1, "sampler_name": "res_multistep", "scheduler": "simple", "denoise": 0.75, "model": ["11", 0], "positive": ["27", 0], "negative": ["33", 0], "latent_image": ["52", 0] }, "class_type": "KSampler", "_meta": { "title": "K采样器(img2img)" } }
+      // 先试 IPAdapter（需要 ComfyUI_IPAdapter_plus 插件 + 模型文件）
+      // 如果失败则回退到普通文生图
+      const ipaWorkflowText = `{
+  "5": { "inputs": { "width": 768, "height": 1344, "batch_size": 1 }, "class_type": "EmptyLatentImage", "_meta": { "title": "空Latent" } },
+  "6": { "inputs": { "text": "__PROMPT__", "clip": ["20", 1] }, "class_type": "CLIPTextEncode", "_meta": { "title": "正面提示词" } },
+  "7": { "inputs": { "text": "__NEGATIVE__", "clip": ["20", 1] }, "class_type": "CLIPTextEncode", "_meta": { "title": "负面提示词" } },
+  "8": { "inputs": { "samples": ["13", 0], "vae": ["28", 0] }, "class_type": "VAEDecode", "_meta": { "title": "VAE解码" } },
+  "10": { "inputs": { "image": "__REF_IMAGE__" }, "class_type": "LoadImage", "_meta": { "title": "角色参考图" } },
+  "28": { "inputs": { "vae_name": "sdxl.vae.safetensors" }, "class_type": "VAELoader", "_meta": { "title": "加载VAE" } },
+  "12": { "inputs": { "model": ["20", 0], "ipadapter": ["30", 0] }, "class_type": "IPAdapter", "_meta": { "title": "IPAdapter" } },
+  "13": { "inputs": { "seed": 42, "steps": 25, "cfg": 7, "sampler_name": "euler", "scheduler": "normal", "denoise": 1, "model": ["12", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0] }, "class_type": "KSampler", "_meta": { "title": "K采样器" } },
+  "20": { "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" }, "class_type": "CheckpointLoaderSimple", "_meta": { "title": "加载模型" } },
+  "27": { "inputs": { "filename_prefix": "sdxl-ipa", "images": ["8", 0] }, "class_type": "SaveImage", "_meta": { "title": "保存图像" } },
+  "30": { "inputs": { "model_name": "ip-adapter_sdxl_vit-h.safetensors", "preset": "FULL", "lora_strength": 0.5, "provisioning": "FIXED" }, "class_type": "IPAdapterUnifiedLoader", "_meta": { "title": "IPAdapter加载器" } }
 }`;
-      // 先文本替换 __REF_IMAGE__
-      const textWithRef = refWorkflowText.replace(/__REF_IMAGE__/g, refFilename);
-      logger(`[ComfyUI Image] 使用 img2img 工作流，参考图: ${refFilename}`);
-      const workflow = prepareWorkflow(textWithRef, config.prompt, undefined, 0, config.seed);
-      return await submitAndWait(workflow, baseUrl);
+      try {
+        const textWithRef = ipaWorkflowText.replace(/__REF_IMAGE__/g, refFilename);
+        logger(`[ComfyUI Image] 使用 IPAdapter 工作流，参考图: ${refFilename}`);
+        const workflow = prepareWorkflow(textWithRef, config.prompt, undefined, 0, config.seed);
+        return await submitAndWait(workflow, baseUrl);
+      } catch (ipaErr: any) {
+        logger(`[ComfyUI Image] IPAdapter 工作流失败 (${ipaErr.message?.slice(0, 100)}), 回退到文生图`);
+      }
     } else {
       logger(`[ComfyUI Image] 参考图上传失败，回退到文生图`);
     }
