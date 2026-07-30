@@ -3,7 +3,7 @@
     "inputs": {
       "filename_prefix": "z-image-turbo",
       "images": [
-        "57:8",
+        "8",
         0
       ]
     },
@@ -12,7 +12,7 @@
       "title": "保存图像"
     }
   },
-  "57:30": {
+  "30": {
     "inputs": {
       "clip_name": "qwen_3_4b.safetensors",
       "type": "lumina2",
@@ -23,7 +23,7 @@
       "title": "加载CLIP"
     }
   },
-  "57:29": {
+  "29": {
     "inputs": {
       "vae_name": "ae.safetensors"
     },
@@ -32,11 +32,11 @@
       "title": "加载VAE"
     }
   },
-  "57:33": {
+  "33": {
     "inputs": {
       "text": "__NEGATIVE__",
       "clip": [
-        "57:30",
+        "30",
         0
       ]
     },
@@ -45,14 +45,14 @@
       "title": "负面提示词"
     }
   },
-  "57:8": {
+  "8": {
     "inputs": {
       "samples": [
-        "57:3",
+        "3",
         0
       ],
       "vae": [
-        "57:29",
+        "29",
         0
       ]
     },
@@ -61,7 +61,7 @@
       "title": "VAE解码"
     }
   },
-  "57:28": {
+  "28": {
     "inputs": {
       "unet_name": "z_image_turbo_bf16.safetensors",
       "weight_dtype": "default"
@@ -71,11 +71,11 @@
       "title": "UNet加载器"
     }
   },
-  "57:27": {
+  "27": {
     "inputs": {
       "text": "__PROMPT__",
       "clip": [
-        "57:30",
+        "30",
         0
       ]
     },
@@ -84,22 +84,36 @@
       "title": "CLIP文本编码"
     }
   },
-  "57:13": {
+  "51": {
     "inputs": {
-      "width": 1024,
-      "height": 1024,
-      "batch_size": 1
+      "image": "__REF_IMAGE__"
     },
-    "class_type": "EmptySD3LatentImage",
+    "class_type": "LoadImage",
     "_meta": {
-      "title": "空Latent图像（SD3）"
+      "title": "加载参考图"
     }
   },
-  "57:11": {
+  "52": {
+    "inputs": {
+      "pixels": [
+        "51",
+        0
+      ],
+      "vae": [
+        "29",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码（参考图）"
+    }
+  },
+  "11": {
     "inputs": {
       "shift": 3,
       "model": [
-        "57:28",
+        "28",
         0
       ]
     },
@@ -108,34 +122,34 @@
       "title": "采样算法（AuraFlow）"
     }
   },
-  "57:3": {
+  "3": {
     "inputs": {
       "seed": 42,
-      "steps": 8,
+      "steps": 12,
       "cfg": 1,
       "sampler_name": "res_multistep",
       "scheduler": "simple",
-      "denoise": 1,
+      "denoise": 0.75,
       "model": [
-        "57:11",
+        "11",
         0
       ],
       "positive": [
-        "57:27",
+        "27",
         0
       ],
       "negative": [
-        "57:33",
+        "33",
         0
       ],
       "latent_image": [
-        "57:13",
+        "52",
         0
       ]
     },
     "class_type": "KSampler",
     "_meta": {
-      "title": "K采样器"
+      "title": "K采样器（img2img）"
     }
   }
 }

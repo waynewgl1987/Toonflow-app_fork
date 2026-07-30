@@ -24,7 +24,7 @@ interface VendorConfig {
   models: (TextModel | ImageModel | VideoModel | TTSModel)[];
 }
 
-interface ImageConfig { prompt: string; imageBase64?: string[]; referenceList?: { type: string; base64: string }[]; size: "1K" | "2K" | "4K"; aspectRatio: `${number}:${number}` }
+interface ImageConfig { prompt: string; imageBase64?: string[]; referenceList?: { type: string; base64: string }[]; size: "1K" | "2K" | "4K"; aspectRatio: `${number}:${number}`; seed?: number }
 interface VideoConfig { duration: number; resolution: string; aspectRatio: "16:9" | "9:16"; prompt: string; imageBase64?: string[]; audio?: boolean; mode: VideoMode[] }
 interface TTSConfig { text: string; voice: string; speechRate: number; pitchRate: number; volume: number }
 interface PollResult { completed: boolean; data?: string; error?: string }
@@ -70,9 +70,14 @@ const vendor: VendorConfig = {
 2. 工作流 JSON 必须使用 ComfyUI "Save (API Format)" 导出
 3. 导出的 JSON 中 CLIPTextEncode 节点的 text 字段必须改为 \`__PROMPT__\`
 
+**角色一致性（v2）：**
+- 当分镜有关联角色素材图时，自动使用 img2img 工作流
+- 以角色素材图为起点进行生成，人物、服装、性别特征更稳定
+- 无需手动配置，系统自动选择 txt2img / img2img
+
 **已配置的工作流文件（均含 \`__PROMPT__\` 占位符）：**
 
-文生图: \`file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_Image.json\`
+文生图: \`file://E:/AI/Toonflow-app/ComfyUI/workflows/image_z_image_turbo.json\`
 文生视频: \`file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_singleVideo.json\`
 
 **注意：** ComfyUI 不支持文本请求，Agent 配置中文本模型务必指向 openai（Qwen3）`,
@@ -113,18 +118,49 @@ const vendor: VendorConfig = {
 // 辅助函数
 // ============================================================
 
-/** 递归替换对象中所有字符串内的 __PROMPT__ */
-function replacePrompt(obj: any, prompt: string): any {
+/** 生成确定性种子
+ *  - 如果提供了 baseSeed（场景种子），用 baseSeed + frameIndex 生成，确保同场景不同帧的种子接近
+ *  - 否则基于 prompt 文本哈希，保持同一 prompt 每次生成相同种子但不同 prompt 不同种子
+ */
+function seedFromString(str: string, frameIndex?: number, baseSeed?: number): number {
+  if (baseSeed !== undefined && frameIndex !== undefined) {
+    // 场景共享种子：同一场景所有帧基于同一个 baseSeed，仅偏移 frameIndex
+    // 使用线性同余确保帧间种子差距小，latent space 更接近
+    const offset = (frameIndex * 7919 + str.length * 13) & 0x7FFFFFFF;
+    return ((baseSeed + offset) % 2147483646) + 1;
+  }
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  // 映射到合法种子范围 [1, 2147483646]
+  return Math.abs(hash % 2147483646) + 1;
+}
+
+/** 默认角色一致性约束：增强提示词，确保人物特征一致 */
+const DEFAULT_CONSISTENCY_PROMPT = "，保持角色外观和服装一致，女性角色始终女性特征，男性角色始终男性特征";
+
+/** 默认负面提示词：防止性别错乱和特征不一致 */
+const DEFAULT_NEGATIVE_PROMPT = "gender change, sex change, male to female, female to male, inconsistent clothing, mismatched appearance, different person, face change, body change, inconsistent character, extra limbs, distorted face, bad anatomy, blurry, low quality";
+
+/** 递归替换对象中所有字符串内的占位符 */
+function replacePlaceholders(obj: any, replacements: Record<string, string>): any {
   if (typeof obj === "string") {
-    return obj.replace(/__PROMPT__/g, prompt);
+    let result = obj;
+    for (const [placeholder, value] of Object.entries(replacements)) {
+      result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+    }
+    return result;
   }
   if (Array.isArray(obj)) {
-    return obj.map((item) => replacePrompt(item, prompt));
+    return obj.map((item) => replacePlaceholders(item, replacements));
   }
   if (obj && typeof obj === "object") {
     const result: any = {};
     for (const [k, v] of Object.entries(obj)) {
-      result[k] = replacePrompt(v, prompt);
+      result[k] = replacePlaceholders(v, replacements);
     }
     return result;
   }
@@ -198,12 +234,33 @@ function sanitizeWorkflow(workflow: Record<string, any>): Record<string, any> {
   return workflow;
 }
 
-/** 解析工作流 JSON 并注入 prompt，同时替换 LoadImage 节点为上传的文件名 */
-function prepareWorkflow(rawJson: string, prompt: string, uploadedFiles?: string[]): object {
-  const parsed = JSON.parse(rawJson);
-  const promptObj = parsed.prompt || parsed; // 兼容 { prompt: {...} } 或直接对象
+/** 解析工作流 JSON 并注入所有占位符，同时替换 LoadImage 节点为上传的文件名
+ * @param baseSeed 场景种子：同一场景所有帧共享，实现跨帧一致性
+ */
+function prepareWorkflow(rawJson: string, prompt: string, uploadedFiles?: string[], frameIndex?: number, baseSeed?: number): object {
+  // 先做文本级替换（处理 __NEGATIVE__ 等非 __PROMPT__ 占位符），再解析 JSON
+  const enhancedPrompt = prompt.trim() + DEFAULT_CONSISTENCY_PROMPT;
+  const seed = seedFromString(prompt, frameIndex, baseSeed);
+  const escapedNeg = DEFAULT_NEGATIVE_PROMPT.replace(/"/g, '\\"');
+  const textWorkflow = rawJson.replace(/__NEGATIVE__/g, escapedNeg);
+  const parsed = JSON.parse(textWorkflow);
+  const promptObj = parsed.prompt || parsed;
   let workflow = sanitizeWorkflow(promptObj);
-  workflow = replacePrompt(workflow, prompt);
+
+  // 对象级替换 __PROMPT__ 占位符
+  workflow = replacePlaceholders(workflow, {
+    "__PROMPT__": enhancedPrompt,
+  });
+
+  // 注入种子：找到所有 KSampler 节点，设置确定性种子
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    const n = node as any;
+    if (n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced") {
+      if (n.inputs) {
+        n.inputs.seed = seed;
+      }
+    }
+  }
   
   // 如果有上传的图片文件，替换所有 LoadImage 节点的 image 字段
   if (uploadedFiles && uploadedFiles.length > 0) {
@@ -382,7 +439,7 @@ async function submitAndWait(workflow: object, baseUrl: string, retries = 2, pro
       await fetch(`http://${backendHost}/api/other/comfyuiQueue/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ promptId: String(promptId), text: submittedPrompt }),
+        body: JSON.stringify({ promptId: String(promptId), text: promptText }),
       });
       logger(`[ComfyUI] 已注册 prompt 缓存: ${promptText.slice(0, 60)}`);
     } catch(e) {}
@@ -451,6 +508,33 @@ async function submitAndWait(workflow: object, baseUrl: string, retries = 2, pro
   return pollResult.data; // 返回 URL，host 的 AiImage/AiVideo 会自动转 base64
 }
 
+/** 上传参考图片到 ComfyUI 的 input 目录，返回文件名 */
+async function uploadRefImage(baseUrl: string, b64: string, index: number): Promise<string | null> {
+  try {
+    const cleanB64 = b64.includes(",") ? b64.split(",")[1] : b64;
+    const imgBuffer = Buffer.from(cleanB64, "base64");
+    const filename = `toonflow_ref_${Date.now()}_${index}.png`;
+    const boundary = `----ToonflowRef${Date.now()}`;
+    const header = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${filename}"\r\nContent-Type: image/png\r\n\r\n`);
+    const footer = Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n--${boundary}--\r\n`);
+    const merged = Buffer.concat([header, imgBuffer, footer]);
+    const uploadRes = await fetch(`${baseUrl}/upload/image`, {
+      method: "POST",
+      headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+      body: merged,
+    });
+    if (uploadRes.ok) {
+      logger(`[ComfyUI] 参考图 ${index} 上传成功: ${filename}`);
+      return filename;
+    }
+    logger(`[ComfyUI] 参考图 ${index} 上传失败: ${uploadRes.status}`);
+    return null;
+  } catch (e: any) {
+    logger(`[ComfyUI] 参考图 ${index} 上传异常: ${e.message}`);
+    return null;
+  }
+}
+
 // ============================================================
 // 文本请求（ComfyUI 不支持，抛错）
 // ============================================================
@@ -476,8 +560,41 @@ const imageRequest = async (config: ImageConfig, model: ImageModel): Promise<str
     );
   }
 
-  logger(`[ComfyUI Image] 使用自定义工作流`);
-  const workflow = prepareWorkflow(customJson, config.prompt);
+  // 判断是否有角色参考图（来自关联素材），有则使用 img2img 工作流保证角色一致性
+  const refList = config.referenceList || [];
+  const hasRefImages = refList.some(r => r.base64 && r.base64.length > 100);
+
+  if (hasRefImages) {
+    logger(`[ComfyUI Image] 有 ${refList.length} 张参考图，使用 img2img 工作流`);
+    // 上传第一张参考图到 ComfyUI
+    const refFilename = await uploadRefImage(baseUrl, refList[0].base64, 0);
+    if (refFilename) {
+      // 使用内嵌的 img2img 参考工作流（内置 __REF_IMAGE__ 占位符）
+      const refWorkflowText = `{
+  "9": { "inputs": { "filename_prefix": "z-image-turbo", "images": ["8", 0] }, "class_type": "SaveImage", "_meta": { "title": "保存图像" } },
+  "30": { "inputs": { "clip_name": "qwen_3_4b.safetensors", "type": "lumina2", "device": "default" }, "class_type": "CLIPLoader", "_meta": { "title": "加载CLIP" } },
+  "29": { "inputs": { "vae_name": "ae.safetensors" }, "class_type": "VAELoader", "_meta": { "title": "加载VAE" } },
+  "33": { "inputs": { "text": "__NEGATIVE__", "clip": ["30", 0] }, "class_type": "CLIPTextEncode", "_meta": { "title": "负面提示词" } },
+  "8": { "inputs": { "samples": ["3", 0], "vae": ["29", 0] }, "class_type": "VAEDecode", "_meta": { "title": "VAE解码" } },
+  "28": { "inputs": { "unet_name": "z_image_turbo_bf16.safetensors", "weight_dtype": "default" }, "class_type": "UNETLoader", "_meta": { "title": "UNet加载器" } },
+  "27": { "inputs": { "text": "__PROMPT__", "clip": ["30", 0] }, "class_type": "CLIPTextEncode", "_meta": { "title": "CLIP文本编码" } },
+  "51": { "inputs": { "image": "__REF_IMAGE__" }, "class_type": "LoadImage", "_meta": { "title": "加载参考图" } },
+  "52": { "inputs": { "pixels": ["51", 0], "vae": ["29", 0] }, "class_type": "VAEEncode", "_meta": { "title": "VAE编码" } },
+  "11": { "inputs": { "shift": 3, "model": ["28", 0] }, "class_type": "ModelSamplingAuraFlow", "_meta": { "title": "采样算法" } },
+  "3": { "inputs": { "seed": 42, "steps": 12, "cfg": 1, "sampler_name": "res_multistep", "scheduler": "simple", "denoise": 0.75, "model": ["11", 0], "positive": ["27", 0], "negative": ["33", 0], "latent_image": ["52", 0] }, "class_type": "KSampler", "_meta": { "title": "K采样器(img2img)" } }
+}`;
+      // 先文本替换 __REF_IMAGE__
+      const textWithRef = refWorkflowText.replace(/__REF_IMAGE__/g, refFilename);
+      logger(`[ComfyUI Image] 使用 img2img 工作流，参考图: ${refFilename}`);
+      const workflow = prepareWorkflow(textWithRef, config.prompt, undefined, 0, config.seed);
+      return await submitAndWait(workflow, baseUrl);
+    } else {
+      logger(`[ComfyUI Image] 参考图上传失败，回退到文生图`);
+    }
+  }
+
+  logger(`[ComfyUI Image] 使用文生图工作流` + (config.seed ? `，场景种子: ${config.seed}` : ""));
+  const workflow = prepareWorkflow(customJson, config.prompt, undefined, 0, config.seed);
   return await submitAndWait(workflow, baseUrl);
 };
 
@@ -584,7 +701,7 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
   if (config.duration) enhancedPrompt += `，时长：${config.duration}秒`;
   if (config.resolution) enhancedPrompt += `，分辨率：${config.resolution}`;
 
-  const workflow = prepareWorkflow(customJson, enhancedPrompt, uploadedFiles.length > 0 ? uploadedFiles : undefined);
+  const workflow = prepareWorkflow(customJson, enhancedPrompt, uploadedFiles.length > 0 ? uploadedFiles : undefined, 0);
   // 记录工作流中 CLIPTextEncode 节点的最终 prompt 内容，确认替换成功
   let submittedPrompt = "";
   for (const [nodeId, node] of Object.entries(workflow)) {
