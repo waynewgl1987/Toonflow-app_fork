@@ -30,8 +30,7 @@ if exist "data\logs" (
     echo   [INFO] Logs directory not found
 )
 
-echo [2/3] Killing stale Node processes...
-taskkill /f /im node.exe >nul 2>&1
+echo [2/3] Killing server process on port 10588 (PID精准杀, 不杀其他Node进程)...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":10588 " ^| findstr LISTENING') do (
     taskkill /f /pid %%a >nul 2>&1
 )

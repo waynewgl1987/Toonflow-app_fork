@@ -2,21 +2,17 @@
 chcp 65001 >nul
 title Toonflow AI
 
-:: Force kill ALL stale node.exe processes (ensures no file handles locked)
-echo [INFO] Cleaning up any stale Node.js processes...
-taskkill /f /im node.exe >nul 2>&1
-if errorlevel 1 (
-    echo [INFO] No stale processes found
-) else (
-    echo [INFO] Stale processes terminated
-    timeout /t 2 /nobreak >nul
-)
-
-:: Kill old process on port 10588 (if any)
+:: Kill old process on port 10588 (if any) — 使用 PID 精准杀进程，不误杀其他 node 进程
 echo [INFO] Checking port 10588...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":10588 " ^| findstr LISTENING') do (
     echo [INFO] Found old process on port 10588 PID=%%a, stopping...
     taskkill /f /pid %%a >nul 2>&1
+    if errorlevel 1 (
+        echo [INFO] No stale processes found on 10588
+    ) else (
+        echo [INFO] Port 10588 freed
+        timeout /t 2 /nobreak >nul
+    )
 )
 
 :: Kill old ComfyUI process on port 8188 (if any) — 确保 ComfyUI 被 Toonflow 统一管理
@@ -25,8 +21,6 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8188 " ^| findstr LISTENING
     echo [INFO] Found old ComfyUI process on port 8188 PID=%%a, stopping...
     taskkill /f /pid %%a >nul 2>&1
 )
-:: Also kill any stray pythonw.exe that might be ComfyUI-related
-taskkill /f /im pythonw.exe >nul 2>&1
 
 echo ============================================
 echo   Toonflow AI - One-Click Start
@@ -149,7 +143,10 @@ echo ============================================
 
 :: Wait for user to close
 pause >nul
-echo [STOP] Stopping server...
-taskkill /f /im node.exe >nul 2>&1
+echo [STOP] Stopping server (port 10588)...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":10588 " ^| findstr LISTENING') do (
+    taskkill /f /pid %%a >nul 2>&1
+    echo [STOP] Killed process PID=%%a
+)
 echo [STOP] Done.
 pause
