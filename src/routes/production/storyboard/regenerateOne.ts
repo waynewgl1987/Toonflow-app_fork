@@ -15,12 +15,13 @@ export default router.post(
     projectId: z.number(),
     scriptId: z.number(),
     prompt: z.string().optional(),
+    extraPrompt: z.string().optional(),
     referenceAssetIds: z.array(z.number()).optional(),
   }),
   async (req, res) => {
-    const { storyboardId, projectId, scriptId, prompt, referenceAssetIds } = req.body;
+    const { storyboardId, projectId, scriptId, prompt, extraPrompt, referenceAssetIds } = req.body;
 
-    // 1. 如果传了 prompt，先更新分镜的提示词
+    // 1. 如果传了 prompt，更新分镜的提示词（只保存原始 prompt，不合并 extraPrompt）
     if (prompt) {
       await u.db("o_storyboard").where({ id: storyboardId }).update({ prompt });
     }
@@ -50,7 +51,10 @@ export default router.post(
       return res.status(400).send(error("分镜提示词为空"));
     }
 
-    // 4. 获取关联素材的图片（参考图）
+    // 4. 构建最终生成用提示词：原始 prompt + 额外提示词（不保存到 DB）
+    const finalPrompt = extraPrompt ? currentPrompt + "，" + extraPrompt : currentPrompt;
+
+    // 5. 获取关联素材的图片（参考图）
     const assets2SbRows = await u
       .db("o_assets2Storyboard")
       .where("storyboardId", storyboardId)
@@ -69,22 +73,22 @@ export default router.post(
       if (imageId != null) orderedImageIds.push(imageId);
     });
 
-    // 5. 获取项目配置
+    // 6. 获取项目配置
     const projectSetting = await u.db("o_project").where("id", projectId).select("imageModel", "imageQuality", "artStyle", "videoRatio").first();
 
-    // 6. 标记为生成中
+    // 7. 标记为生成中
     await u.db("o_storyboard").where("id", storyboardId).update({ state: "生成中" });
 
-    // 7. 立即返回响应，后台异步生成
+    // 8. 立即返回响应，后台异步生成
     res.status(200).send(success({ message: "开始重新生成分镜图", id: storyboardId }));
 
-    // 8. 异步执行生成
+    // 9. 异步执行生成（使用 finalPrompt，不污染 DB 中的原始 prompt）
     setImmediate(async () => {
       try {
         const referenceList = await getAssetsImageBase64(orderedImageIds);
         const imageCls = await u.Ai.Image(projectSetting?.imageModel as `${string}:${string}`).run(
           {
-            prompt: currentPrompt,
+            prompt: finalPrompt,
             size: projectSetting?.imageQuality as "1K" | "2K" | "4K",
             aspectRatio: projectSetting?.videoRatio as `${number}:${number}`,
             referenceList,
@@ -92,7 +96,7 @@ export default router.post(
           {
             taskClass: "重新生成分镜图片",
             describe: "分镜图片单张重生成",
-            relatedObjects: JSON.stringify({ prompt: currentPrompt }),
+            relatedObjects: JSON.stringify({ prompt: currentPrompt, extraPrompt }),
             projectId: projectId,
           },
         );
