@@ -305,6 +305,8 @@ interface ImageConfig {
   referenceList?: Extract<ReferenceList, { type: "image" }>[];
   size: "1K" | "2K" | "4K";
   aspectRatio: `${number}:${number}`;
+  /** 可选种子：同一场景共享，实现跨帧一致性。不传则由供应商自行决定 */
+  seed?: number;
 }
 
 interface TaskRecord {

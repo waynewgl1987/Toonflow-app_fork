@@ -75,6 +75,7 @@ async function ensureComfyUI(socket: Socket, resTool: ResTool): Promise<boolean>
   logger.genLog({ event: "chat_auto_start_comfyui" });
 
   // 启动 ComfyUI（复用 services/index.ts 的路径）
+  // 注意: 必须用 pythonw.exe（GUI 应用，无控制台窗口），用 python.exe 会闪烁 CMD 窗口
   const rootDir = "E:\\AI\\ComfyAI_Video-ShortVideo\\ComfyUI纯包\\ComfyUI";
   const pythonPath = path.join(rootDir, "python\\pythonw.exe");
   const scriptPath = path.join(rootDir, "ComfyUI\\main.py");
@@ -244,6 +245,24 @@ export default (nsp: Namespace) => {
           { title: "🎨 ComfyUI 生图", prompt: "继续（生图模式）" },
           { title: "🤖 自动选择", prompt: "继续" },
         ]);
+        // 追加阶段重置选项（通过另一条系统消息展示，不干扰主建议）
+        try {
+          const resetMsg = resTool.newMessage("assistant", "系统");
+          resetMsg.text("如需重新执行某个阶段，请点击下方按钮：");
+          resetMsg.suggestion([
+            { title: "🔄 重做阶段1（导演规划）", prompt: "请重做导演规划阶段" },
+            { title: "🔄 重做阶段2（衍生资产分析）", prompt: "请重做衍生资产分析阶段" },
+            { title: "🔄 重做阶段3（衍生资产生成）", prompt: "请重做衍生资产生成阶段" },
+            { title: "🔄 重做阶段4（构建分镜表）", prompt: "请重做构建分镜表阶段" },
+            { title: "🔄 重做阶段5（分镜面板写入）", prompt: "请重做分镜面板写入阶段" },
+            { title: "🔄 重做阶段6（分镜图生成）", prompt: "请重做分镜图生成阶段" },
+            { title: "🔁 从头开始（全部重做）", prompt: "从头开始，全部重做" },
+          ]);
+          // 立即标记完成（纯工具消息，不需要流式输出）
+          resetMsg.complete();
+        } catch (_e) {
+          // 重置建议为可选功能，失败不阻塞主流程
+        }
       } catch (err: any) {
         if (err.name !== "AbortError" && !currentController.signal.aborted) {
           console.error("[productionAgent] chat error:", u.error(err).message);

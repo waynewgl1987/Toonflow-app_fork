@@ -9,6 +9,8 @@ import ResTool from "@/socket/resTool";
 import * as fs from "fs";
 import path from "path";
 import logger from "@/logger";
+import { resetProductionStage, resetFullProject, PRODUCTION_STAGES } from "@/utils/resetStage";
+import type { ProductionStage } from "@/utils/resetStage";
 
 // 诊断日志：写入 data/logs/agent_diagnostic.log
 const DIAG_LOG = path.join(process.cwd(), "data", "logs", "agent_diagnostic.log");
@@ -431,6 +433,40 @@ async function createSubAgent(parentCtx: AgentContext, forceCloud: boolean = fal
     },
   });
 
+  // ── 重置阶段工具 ──
+  const stageEnum = z.enum(PRODUCTION_STAGES as [ProductionStage, ...ProductionStage[]]);
+
+  const reset_project_stage = tool({
+    description: "重置指定生产阶段的所有数据（数据库记录），清空旧数据后再重新执行。在用户要求重做/重新生成某个阶段时，必须先调用此工具清理数据，再派发该阶段。",
+    inputSchema: jsonSchema<{ stage: ProductionStage; projectId: number; scriptId?: number }>(
+      z.object({
+        stage: stageEnum.describe("要重置的阶段，例如 'derive-assets' 表示衍生资产分析"),
+        projectId: z.number().describe("项目ID"),
+        scriptId: z.number().optional().describe("剧本ID（可选）"),
+      }).toJSONSchema(),
+    ),
+    execute: async ({ stage, projectId, scriptId }) => {
+      const results = await resetProductionStage(stage, projectId, scriptId);
+      const deletedCount = Object.values(results).reduce((sum, n) => sum + n, 0);
+      return `已重置阶段「${stage}」，共清理 ${deletedCount} 条记录${scriptId ? `（剧本ID: ${scriptId}）` : ""}`;
+    },
+  });
+
+  const reset_full_project = tool({
+    description: "重置项目的所有生产数据，从头开始。在用户要求「从头开始」或「全部重做」时调用此工具。",
+    inputSchema: jsonSchema<{ projectId: number; scriptId?: number }>(
+      z.object({
+        projectId: z.number().describe("项目ID"),
+        scriptId: z.number().optional().describe("剧本ID（可选）"),
+      }).toJSONSchema(),
+    ),
+    execute: async ({ projectId, scriptId }) => {
+      const results = await resetFullProject(projectId, scriptId);
+      const deletedCount = Object.values(results).reduce((sum, n) => sum + n, 0);
+      return `已重置所有生产数据，共清理 ${deletedCount} 条记录`;
+    },
+  });
+
   return {
     run_sub_agent_derive_assets,
     run_sub_agent_generate_assets,
@@ -439,6 +475,8 @@ async function createSubAgent(parentCtx: AgentContext, forceCloud: boolean = fal
     run_sub_agent_storyboard_panel,
     run_sub_agent_storyboard_table,
     run_sub_agent_supervision,
+    reset_project_stage,
+    reset_full_project,
   };
 }
 
