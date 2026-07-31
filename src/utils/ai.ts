@@ -148,6 +148,7 @@ async function getVendorTemplateFn(fnName: FnName, modelName: `${string}:${strin
     const defaultWorkflows: Record<string, string> = {
       imageWorkflowJson: path.join(process.cwd(), "ComfyUI", "workflows", "image_z_image_turbo.json"),
       videoWorkflowJson: path.join(process.cwd(), "ComfyUI", "workflows", "LTX2.3_singleVideo.json"),
+      frameVideoWorkflowJson: path.join(process.cwd(), "ComfyUI", "workflows", "LTX2.3_frameVideo.json"),
     };
     for (const [key, defaultPath] of Object.entries(defaultWorkflows)) {
       if (!inputValues[key] || inputValues[key] === "{}" || (typeof inputValues[key] === "string" && inputValues[key].startsWith("file://"))) {

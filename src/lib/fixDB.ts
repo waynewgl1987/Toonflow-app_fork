@@ -68,6 +68,20 @@ export default async (knex: Knex): Promise<void> => {
   await addColumn("o_modelPrompt", "fileName", "string");
   await addColumn("o_modelPrompt", "path", "string");
   fixPhase("字段迁移完成");
+  //为 comfyui 供应商补充首尾帧视频工作流默认值（若缺失）
+  try {
+    const comfyuiCfg = await u.db("o_vendorConfig").where("id", "comfyui").first();
+    if (comfyuiCfg) {
+      const iv = JSON.parse(comfyuiCfg.inputValues ?? "{}");
+      if (!iv.frameVideoWorkflowJson) {
+        iv.frameVideoWorkflowJson = "file://" + path.join(process.cwd(), "ComfyUI", "workflows", "LTX2.3_frameVideo.json").replace(/\\/g, "/");
+        await u.db("o_vendorConfig").where("id", "comfyui").update({ inputValues: JSON.stringify(iv) });
+        console.log("[fixDB] 已为 comfyui 供应商补充首尾帧视频工作流默认值:", iv.frameVideoWorkflowJson);
+      }
+    }
+  } catch (e: any) {
+    console.warn("[fixDB] 补充 comfyui 首尾帧工作流失败:", e.message);
+  }
   const vendorDataSelect = await u.db("o_vendorConfig").whereIn("id", ["deepseek", "atlascloud"]).select("*");
   if (!vendorDataSelect.find((i) => i.id == "deepseek")) {
     await u.db("o_vendorConfig").insert({

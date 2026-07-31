@@ -81,6 +81,7 @@ import route76 from "./routes/production/storyboard/removeFrame";
 import route76b from "./routes/production/storyboard/regenerateOne";
 import route77 from "./routes/production/storyboard/updateStoryboardUrl";
 import route78 from "./routes/production/workbench/addTrack";
+import route78b from "./routes/production/workbench/batchDeleteTrack";
 import route79 from "./routes/production/workbench/batchGeneratePrompt";
 import route80 from "./routes/production/workbench/batchGenerateVideo";
 import route81 from "./routes/production/workbench/checkVideoPrompt";
@@ -260,6 +261,7 @@ export default async (app: Express) => {
   app.use("/api/production/storyboard/regenerateOne", route76b);
   app.use("/api/production/storyboard/updateStoryboardUrl", route77);
   app.use("/api/production/workbench/addTrack", route78);
+  app.use("/api/production/workbench/batchDeleteTrack", route78b);
   app.use("/api/production/workbench/batchGeneratePrompt", route79);
   app.use("/api/production/workbench/batchGenerateVideo", route80);
   app.use("/api/production/workbench/checkVideoPrompt", route81);

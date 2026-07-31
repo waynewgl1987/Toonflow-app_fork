@@ -86,13 +86,15 @@ const vendor: VendorConfig = {
   inputs: [
     { key: "baseUrl", label: "ComfyUI 地址", type: "url", required: true, placeholder: "http://localhost:8188" },
     { key: "imageWorkflowJson", label: "文生图工作流 JSON", type: "text", required: false, placeholder: "必填：粘贴 Save (API Format) 的 JSON 或 file:// 路径" },
-    { key: "videoWorkflowJson", label: "文生视频工作流 JSON", type: "text", required: false, placeholder: "必填：粘贴 Save (API Format) 的 JSON 或 file:// 路径" },
+    { key: "videoWorkflowJson", label: "单图视频工作流 JSON", type: "text", required: false, placeholder: "必填：粘贴 Save (API Format) 的 JSON 或 file:// 路径" },
+    { key: "frameVideoWorkflowJson", label: "首尾帧视频工作流 JSON", type: "text", required: false, placeholder: "可选：首尾帧模式使用的视频工作流（如 LTX2.3 首尾视频）" },
     { key: "backendHost", label: "Toonflow 后端地址", type: "text", required: false, placeholder: "127.0.0.1:10588" },
   ],
   inputValues: {
     baseUrl: "http://localhost:8188",
     imageWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/image_z_image_turbo.json",
     videoWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_singleVideo.json",
+    frameVideoWorkflowJson: "file://E:/AI/Toonflow-app/ComfyUI/workflows/LTX2.3_frameVideo.json",
     backendHost: "127.0.0.1:10588",
   },
   models: [
@@ -641,16 +643,19 @@ const imageRequest = async (config: ImageConfig, model: ImageModel): Promise<str
 // ============================================================
 const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<string> => {
   const baseUrl = vendor.inputValues.baseUrl;
-  const customJson = vendor.inputValues.videoWorkflowJson || "";
+  // 首尾帧模式（startEndRequired / endFrameOptional / startFrameOptional）使用首尾帧工作流，其余使用单图视频工作流
+  const modeStr = Array.isArray(config.mode) ? config.mode.join(",") : String(config.mode || "");
+  const isFrameMode = modeStr.includes("startEndRequired") || modeStr.includes("endFrameOptional") || modeStr.includes("startFrameOptional");
+  const customJson = (isFrameMode ? vendor.inputValues.frameVideoWorkflowJson : "") || vendor.inputValues.videoWorkflowJson || "";
 
   if (!customJson) {
     throw new Error(
-      `ComfyUI 文生视频工作流未配置。请按以下步骤操作：\n` +
+      `ComfyUI 视频工作流未配置。请按以下步骤操作：\n` +
       `1. 打开 ComfyUI Web UI (${baseUrl})\n` +
-      `2. 加载或创建一个可用的视频工作流（如 LTX2.3 单图视频）\n` +
+      `2. 加载或创建一个可用的视频工作流（单图模式用 LTX2.3 单图视频；首尾帧模式用 LTX2.3 首尾视频）\n` +
       `3. 菜单 → Save (API Format) 导出为 JSON\n` +
       `4. 将 CLIPTextEncode 节点的 text 字段改为 __PROMPT__\n` +
-      `5. 在 Toonflow 设置 → 模型服务 → ComfyUI → "文生视频工作流 JSON" 中粘贴该 JSON\n` +
+      `5. 在 Toonflow 设置 → 模型服务 → ComfyUI → 对应的视频工作流 JSON 中粘贴该 JSON\n` +
       `   或使用 file:// 路径: file://E:/AI/ComfyAI_Video-ShortVideo/工作流/LTX2.3/LTX2.3单图视频.json`
     );
   }
