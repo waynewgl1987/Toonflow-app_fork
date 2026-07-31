@@ -90,6 +90,7 @@ import route83 from "./routes/production/workbench/deleteTrack";
 import route84 from "./routes/production/workbench/delVideo";
 import route85 from "./routes/production/workbench/generateVideo";
 import route86 from "./routes/production/workbench/generateVideoPrompt";
+import route86b from "./routes/production/workbench/mergeFrameVideoPrompt";
 import route87 from "./routes/production/workbench/getAudioBindAssetsList";
 import route88 from "./routes/production/workbench/getFileUrl";
 import route89 from "./routes/production/workbench/getGenerateData";
@@ -270,6 +271,7 @@ export default async (app: Express) => {
   app.use("/api/production/workbench/delVideo", route84);
   app.use("/api/production/workbench/generateVideo", route85);
   app.use("/api/production/workbench/generateVideoPrompt", route86);
+  app.use("/api/production/workbench/mergeFrameVideoPrompt", route86b);
   app.use("/api/production/workbench/getAudioBindAssetsList", route87);
   app.use("/api/production/workbench/getFileUrl", route88);
   app.use("/api/production/workbench/getGenerateData", route89);
