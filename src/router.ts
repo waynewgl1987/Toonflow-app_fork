@@ -36,6 +36,7 @@ import route31 from "./routes/cornerScape/pollingAudio";
 import route32 from "./routes/cornerScape/updateAssetsAudio";
 import route33 from "./routes/general/generalStatistics";
 import route34 from "./routes/general/getSingleProject";
+import route34b from "./routes/general/translatePrompt";
 import route35 from "./routes/general/updateProject";
 import route36 from "./routes/login/login";
 import route37 from "./routes/modelSelect/getModelDetail";
@@ -217,6 +218,7 @@ export default async (app: Express) => {
   app.use("/api/cornerScape/updateAssetsAudio", route32);
   app.use("/api/general/generalStatistics", route33);
   app.use("/api/general/getSingleProject", route34);
+  app.use("/api/general/translatePrompt", route34b);
   app.use("/api/general/updateProject", route35);
   app.use("/api/login/login", route36);
   app.use("/api/modelSelect/getModelDetail", route37);
