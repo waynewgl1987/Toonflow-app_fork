@@ -148,6 +148,32 @@ const DEFAULT_CONSISTENCY_PROMPT = "，保持角色外观和服装一致，女�
 /** 默认负面提示词：防止性别错乱和特征不一致 */
 const DEFAULT_NEGATIVE_PROMPT = "gender change, sex change, male to female, female to male, inconsistent clothing, mismatched appearance, different person, face change, body change, inconsistent character, extra limbs, distorted face, bad anatomy, blurry, low quality";
 
+/**
+ * 注入视频时长：找到工作流中"帧数 = a*b+1"计算节点（SimpleMath+），
+ * 将其 a 输入端引用的 INTConstant 节点设为真实时长（秒），实现 帧数 = 时长 × 帧率 + 1。
+ * LTX2.3 默认工作流：a=时长秒数(默认10)，b=帧率(30)，frames = a*b+1 = 301
+ */
+function injectDuration(workflow: Record<string, any>, durationSeconds: number): void {
+  if (!durationSeconds || durationSeconds <= 0) return;
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    const n = node as any;
+    if (n.class_type === "SimpleMath+" && typeof n.inputs?.value === "string" && n.inputs.value.includes("a*b")) {
+      const aRef = n.inputs?.a;
+      if (Array.isArray(aRef) && aRef.length >= 2) {
+        const srcNode = workflow[aRef[0] as string];
+        if (srcNode && srcNode.class_type === "INTConstant") {
+          const fps = 30;
+          const frames = Math.max(1, Math.round(durationSeconds)) * fps + 1;
+          srcNode.inputs.value = Math.max(1, Math.round(durationSeconds));
+          logger(`[ComfyUI] 注入时长: 节点 ${nodeId} 的 a 输入(${aRef[0]}) 设为 ${durationSeconds} 秒 → 帧数 ${frames} @ ${fps}fps`);
+          return;
+        }
+      }
+    }
+  }
+  logger(`[ComfyUI] ⚠️ 未找到可注入时长的 SimpleMath a*b+1 节点，保持默认帧数`);
+}
+
 /** 递归替换对象中所有字符串内的占位符 */
 function replacePlaceholders(obj: any, replacements: Record<string, string>): any {
   if (typeof obj === "string") {
@@ -240,7 +266,7 @@ function sanitizeWorkflow(workflow: Record<string, any>): Record<string, any> {
 /** 解析工作流 JSON 并注入所有占位符，同时替换 LoadImage 节点为上传的文件名
  * @param baseSeed 场景种子：同一场景所有帧共享，实现跨帧一致性
  */
-function prepareWorkflow(rawJson: string, prompt: string, uploadedFiles?: string[], frameIndex?: number, baseSeed?: number): object {
+function prepareWorkflow(rawJson: string, prompt: string, uploadedFiles?: string[], frameIndex?: number, baseSeed?: number, durationSeconds?: number): object {
   // 先做文本级替换（处理 __NEGATIVE__ 等非 __PROMPT__ 占位符），再解析 JSON
   const enhancedPrompt = prompt.trim() + DEFAULT_CONSISTENCY_PROMPT;
   const seed = seedFromString(prompt, frameIndex, baseSeed);
@@ -254,6 +280,11 @@ function prepareWorkflow(rawJson: string, prompt: string, uploadedFiles?: string
   workflow = replacePlaceholders(workflow, {
     "__PROMPT__": enhancedPrompt,
   });
+
+  // 注入视频时长 → 帧数（首尾帧/单图视频工作流均生效）
+  if (durationSeconds && durationSeconds > 0) {
+    injectDuration(workflow, durationSeconds);
+  }
 
   // LOG: 打印替换后的 CLIPTextEncode 节点内容
   for (const [nodeId, node] of Object.entries(workflow)) {
@@ -744,7 +775,7 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
   if (config.duration) enhancedPrompt += `，时长：${config.duration}秒`;
   if (config.resolution) enhancedPrompt += `，分辨率：${config.resolution}`;
 
-  const workflow = prepareWorkflow(customJson, enhancedPrompt, uploadedFiles.length > 0 ? uploadedFiles : undefined, 0);
+  const workflow = prepareWorkflow(customJson, enhancedPrompt, uploadedFiles.length > 0 ? uploadedFiles : undefined, 0, undefined, config.duration);
   // 记录工作流中 CLIPTextEncode 节点的最终 prompt 内容，确认替换成功
   let submittedPrompt = "";
   for (const [nodeId, node] of Object.entries(workflow)) {

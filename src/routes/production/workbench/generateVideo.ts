@@ -6,6 +6,7 @@ import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
 import { ReferenceList } from "@/utils/ai";
 import logger from "@/logger";
+import { isFrameVideoMode, mergeFrameVideoPrompts } from "@/utils/frameVideoPrompt";
 const router = express.Router();
 
 type Type = "imageReference" | "startImage" | "endImage" | "videoReference" | "audioReference";
@@ -72,9 +73,9 @@ export default router.post(
     const images = await Promise.all(
       resolvedUploadData.map(async (item: UploadItem) => {
         if (item.sources === "storyboard") {
-          const filePath = await u.db("o_storyboard").where("id", item.id).select("filePath").first();
-          logger.genLog({ event: "video_image_query", projectId, detail: `storyboard id=${item.id} filePath=${filePath?.filePath || "NULL"}` });
-          return { path: filePath?.filePath, sources: "storyBoard" };
+          const sb = await u.db("o_storyboard").where("id", item.id).select("filePath", "prompt", "videoDesc").first();
+          logger.genLog({ event: "video_image_query", projectId, detail: `storyboard id=${item.id} filePath=${sb?.filePath || "NULL"} hasPrompt=${!!sb?.prompt} hasVideoDesc=${!!sb?.videoDesc}` });
+          return { path: sb?.filePath, sources: "storyBoard", prompt: sb?.prompt, videoDesc: sb?.videoDesc };
         }
         if (item.sources === "assets") {
           const filePath = await u
@@ -116,13 +117,43 @@ export default router.post(
     };
     const finalRefs = base64.filter(Boolean) as ReferenceList[];
     logger.genLog({ event: "video_ref_list", projectId, trackId, refCount: finalRefs.length, promptLen: prompt?.length || 0, promptStart: (prompt || "").slice(0, 80) });
+
+    // ── 首尾帧模式：自动优化合并两个分镜的提示词，保证首尾过渡连贯 ──
+    let finalPrompt = prompt;
+    const effectiveMode = modeData.length > 0 ? modeData : mode;
+    if (isFrameVideoMode(effectiveMode)) {
+      const storyboardItems = (validImages as any[]).filter(
+        (i): i is { path: string; sources: string; prompt: string; videoDesc?: string } =>
+          !!i && i.sources === "storyBoard" && !!i.prompt,
+      );
+      if (storyboardItems.length >= 2) {
+        try {
+          finalPrompt = await mergeFrameVideoPrompts({
+            projectId,
+            promptA: storyboardItems[0].prompt,
+            promptB: storyboardItems[1].prompt,
+            videoDescA: storyboardItems[0].videoDesc,
+            videoDescB: storyboardItems[1].videoDesc,
+            duration,
+            trackId,
+          });
+          logger.genLog({ event: "video_frame_prompt_auto_merged", projectId, trackId, outLen: finalPrompt?.length || 0 });
+        } catch (e) {
+          logger.genLog({ event: "video_frame_prompt_auto_merge_failed", projectId, trackId, error: u.error(e).message });
+          finalPrompt = prompt; // 合并失败时回退到原提示词
+        }
+      } else {
+        logger.genLog({ event: "video_frame_prompt_skip", projectId, trackId, reason: `storyboard提示词不足2条: ${storyboardItems.length}` });
+      }
+    }
+
     const aiVideo = u.Ai.Video(model);
     aiVideo
       .run(
         {
-          prompt,
+          prompt: finalPrompt,
           referenceList: finalRefs,
-          mode: modeData.length > 0 ? modeData : mode,
+          mode: effectiveMode,
           duration,
           aspectRatio: (ratio?.videoRatio as "16:9" | "9:16") || "16:9",
           resolution,

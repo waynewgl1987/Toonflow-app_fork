@@ -6,6 +6,7 @@ import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
 import { ReferenceList } from "@/utils/ai";
 import logger from "@/logger";
+import { isFrameVideoMode, mergeFrameVideoPrompts } from "@/utils/frameVideoPrompt";
 const router = express.Router();
 
 type Type = "imageReference" | "startImage" | "endImage" | "videoReference" | "audioReference";
@@ -81,9 +82,9 @@ export default router.post(
         const images = await Promise.all(
           uploadData.map(async (item) => {
             if (item.sources === "storyboard") {
-              const filePath = await u.db("o_storyboard").where("id", item.id).select("filePath").first();
-              logger.genLog({ event: "batch_video_img_query", projectId, trackId, detail: `storyboard id=${item.id} filePath=${filePath?.filePath || "NULL"}` });
-              return { path: filePath?.filePath, sources: "storyBoard" };
+              const sb = await u.db("o_storyboard").where("id", item.id).select("filePath", "prompt", "videoDesc").first();
+              logger.genLog({ event: "batch_video_img_query", projectId, trackId, detail: `storyboard id=${item.id} filePath=${sb?.filePath || "NULL"} hasPrompt=${!!sb?.prompt}` });
+              return { path: sb?.filePath, sources: "storyBoard", prompt: sb?.prompt, videoDesc: sb?.videoDesc };
             }
             if (item.sources === "assets") {
               const filePath = await u
@@ -92,7 +93,7 @@ export default router.post(
                 .leftJoin("o_image", "o_assets.imageId", "o_image.id")
                 .select("o_image.filePath", "o_image.type")
                 .first();
-              logger.genLog({ event: "batch_video_img_query", projectId, trackId, detail: `assets id=${item.id} filePath=${filePath?.filePath || "NULL"}` });
+              logger.genLog({ event: "batch_video_img_query", projectId, trackId, detail: `assets id=${item.id} filePath=${filePath?.filePath || "NULL"} type=${filePath?.type || "NULL"}` });
               return { path: filePath?.filePath, sources: filePath.type };
             }
           }),
@@ -158,9 +159,40 @@ export default router.post(
           );
           const finalRefs = base64.filter(Boolean) as ReferenceList[];
           const relatedObjects = { projectId, videoId, scriptId, type: "视频" };
+
+          // ── 首尾帧模式：自动优化合并该轨道两个分镜的提示词，保证首尾过渡连贯 ──
+          let finalPrompt = labelPrompt;
+          const effectiveMode = modeData.length > 0 ? modeData : mode;
+          if (isFrameVideoMode(effectiveMode)) {
+            const storyboardItems = (images as any[]).filter(
+              (i): i is { path: string; sources: string; prompt: string; videoDesc?: string } =>
+                !!i && i.sources === "storyBoard" && !!i.prompt,
+            );
+            if (storyboardItems.length >= 2) {
+              try {
+                const merged = await mergeFrameVideoPrompts({
+                  projectId,
+                  promptA: storyboardItems[0].prompt,
+                  promptB: storyboardItems[1].prompt,
+                  videoDescA: storyboardItems[0].videoDesc,
+                  videoDescB: storyboardItems[1].videoDesc,
+                  duration,
+                  trackId,
+                });
+                finalPrompt = `【分镜${sbId}】${merged}`;
+                logger.genLog({ event: "batch_video_frame_prompt_auto_merged", projectId, trackId, outLen: merged?.length || 0 });
+              } catch (e: any) {
+                logger.genLog({ event: "batch_video_frame_prompt_auto_merge_failed", projectId, trackId, error: u.error(e).message });
+                finalPrompt = labelPrompt;
+              }
+            } else {
+              logger.genLog({ event: "batch_video_frame_prompt_skip", projectId, trackId, reason: `storyboard提示词不足2条: ${storyboardItems.length}` });
+            }
+          }
+
           const aiVideo = u.Ai.Video(model);
           await aiVideo.run(
-            { prompt: labelPrompt, referenceList: finalRefs, mode: modeData.length > 0 ? modeData : mode, duration, aspectRatio: (ratio?.videoRatio as "16:9" | "9:16") || "16:9", resolution, audio },
+            { prompt: finalPrompt, referenceList: finalRefs, mode: effectiveMode, duration, aspectRatio: (ratio?.videoRatio as "16:9" | "9:16") || "16:9", resolution, audio },
             { projectId, taskClass: "视频生成", describe: "根据提示词生成视频", relatedObjects: JSON.stringify(relatedObjects) },
           );
           await aiVideo.save(videoPath);
